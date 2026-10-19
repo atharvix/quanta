@@ -83,5 +83,35 @@ Interactive API documentation will be available at: `http://localhost:8000/docs`
 
 ---
 
+## Optimization Engine (Member 2 — Parv Sharma)
+
+The Optimization Engine (`services/optimization-engine/`, port 8001) provides mathematical programming (LP/QP), Quadratic Unconstrained Binary Optimization (QUBO) formulations, and Quantum Approximate Optimization Algorithm (QAOA) statevector simulation.
+
+### 1. Run Optimization Engine Tests
+```bash
+cd services/optimization-engine
+pytest -v
+```
+
+### 2. Run the Synthetic ₹100 Cr Optimization Demo
+```bash
+python services/optimization-engine/examples/basic_optimization_demo.py
+```
+
+### 3. Launch the FastAPI Optimization Engine Service
+```bash
+cd services/optimization-engine
+uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+```
+Interactive API documentation is available at: `http://localhost:8001/docs`
+
+### 4. Run the Full Classical vs QAOA Benchmark Suite
+```bash
+python -c "import sys; sys.path.insert(0, 'services/optimization-engine'); from app.benchmarks.reporter import generate_benchmark_and_reports; generate_benchmark_and_reports()"
+```
+
+---
+
 ## Disclaimer
 QUANTA is an academic research prototype and simulated decision intelligence framework. It does not provide certified financial advice or execute live transactions with real financial institutions.
+
