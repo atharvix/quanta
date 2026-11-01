@@ -13,7 +13,9 @@ import (
 	"github.com/atharvix/quanta/apps/backend/internal/config"
 	"github.com/atharvix/quanta/apps/backend/internal/database"
 	"github.com/atharvix/quanta/apps/backend/internal/handlers"
+	"github.com/atharvix/quanta/apps/backend/internal/repository"
 	"github.com/atharvix/quanta/apps/backend/internal/router"
+	"github.com/atharvix/quanta/apps/backend/internal/service"
 )
 
 func main() {
@@ -21,24 +23,36 @@ func main() {
 	cfg := config.Load()
 	log.Printf("[INFO] Initializing QUANTA Backend Service with %s", cfg.String())
 
-	// 2. Attempt connection to PostgreSQL (pgxpool)
-	// If PostgreSQL is offline, log a warning and continue starting the HTTP server in degraded mode.
-	initCtx, initCancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer initCancel()
+	// 2. Initialize thread-safe database container with reconnection support
+	db := database.NewDB(cfg.DatabaseURL)
+	defer db.Close()
 
-	db, err := database.NewPool(initCtx, cfg.DatabaseURL)
-	if err != nil {
+	// Context for graceful shutdown signal propagation
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// Initial bootstrap connection attempt
+	initCtx, initCancel := context.WithTimeout(ctx, 3*time.Second)
+	if err := db.Connect(initCtx); err != nil {
 		log.Printf("[WARN] PostgreSQL connection failed at bootstrap: %v. Running in degraded mode without database.", err)
 	} else {
-		defer db.Close()
 		log.Println("[INFO] PostgreSQL connection pool initialized and verified successfully.")
 	}
+	initCancel()
 
-	// 3. Initialize HTTP handlers and router
+	// 3. Start background retry loop to automatically reconnect if DB is offline or recovers
+	db.StartBackgroundRetry(ctx, 5*time.Second)
+
+	// 4. Initialize clean architecture layers
+	treasuryRepo := repository.NewPgxTreasuryRepository(db)
+	treasuryService := service.NewTreasuryService(treasuryRepo)
+
 	healthHandler := handlers.NewHealthHandler(db)
-	appRouter := router.NewRouter(cfg, healthHandler)
+	treasuryHandler := handlers.NewTreasuryHandler(treasuryService)
 
-	// 4. Configure robust HTTP server with enterprise timeouts
+	appRouter := router.NewRouter(cfg, healthHandler, treasuryHandler)
+
+	// 5. Configure robust HTTP server with enterprise timeouts
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,
 		Handler:      appRouter,
@@ -47,7 +61,7 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// 5. Start listening asynchronously in a goroutine
+	// 6. Start listening asynchronously in a goroutine
 	go func() {
 		log.Printf("[INFO] QUANTA Backend HTTP server listening on :%s", cfg.Port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -55,11 +69,8 @@ func main() {
 		}
 	}()
 
-	// 6. Graceful shutdown on SIGINT / SIGTERM
-	stopSignal := make(chan os.Signal, 1)
-	signal.Notify(stopSignal, os.Interrupt, syscall.SIGTERM)
-	<-stopSignal
-
+	// 7. Wait for termination signal
+	<-ctx.Done()
 	log.Println("[INFO] Received termination signal. Initiating graceful shutdown...")
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)

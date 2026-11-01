@@ -12,7 +12,7 @@ import (
 )
 
 // NewRouter constructs a Chi HTTP router with essential enterprise middlewares and registered routes.
-func NewRouter(cfg *config.Config, healthHandler *handlers.HealthHandler) http.Handler {
+func NewRouter(cfg *config.Config, healthHandler *handlers.HealthHandler, treasuryHandler *handlers.TreasuryHandler) http.Handler {
 	r := chi.NewRouter()
 
 	// 1. Injects a unique X-Request-ID into each request for end-to-end tracing
@@ -40,6 +40,15 @@ func NewRouter(cfg *config.Config, healthHandler *handlers.HealthHandler) http.H
 	r.Route("/api/v1", func(v1 chi.Router) {
 		// Readiness check that pings database (port 8080/api/v1/health)
 		v1.Get("/health", healthHandler.DatabaseHealth)
+
+		// Corporate treasury endpoints
+		if treasuryHandler != nil {
+			v1.Route("/treasuries", func(tr chi.Router) {
+				tr.Get("/", treasuryHandler.List)
+				tr.Post("/", treasuryHandler.Create)
+				tr.Get("/{id}", treasuryHandler.GetByID)
+			})
+		}
 	})
 
 	return r

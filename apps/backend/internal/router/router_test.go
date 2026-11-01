@@ -12,7 +12,7 @@ import (
 func TestRouter_Routes(t *testing.T) {
 	cfg := config.Load()
 	healthHandler := handlers.NewHealthHandler(nil)
-	r := NewRouter(cfg, healthHandler)
+	r := NewRouter(cfg, healthHandler, nil)
 
 	tests := []struct {
 		method         string
