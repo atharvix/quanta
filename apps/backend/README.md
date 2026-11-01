@@ -1,4 +1,4 @@
-﻿# Backend Service (Aryan - Member 3)
+# Backend Service (Aryan - Member 3)
 
 This directory houses the Go REST API and database integration layer for the QUANTA Autonomous Financial Treasury & Capital Optimization Platform.
 
@@ -64,9 +64,8 @@ go test -v ./...
 ```
 
 ### Run Integration Tests (Requires Running PostgreSQL)
-```bash
-# PowerShell
-$env:DATABASE_URL="postgres://quanta_admin:quanta_secure_dev_password@localhost:5432/quanta_db?sslmode=disable"
+```cmd
+set DATABASE_URL=postgres://quanta_admin:quanta_secure_dev_password@localhost:5432/quanta_db?sslmode=disable
 go test -v -tags=integration ./...
 ```
 
@@ -80,4 +79,47 @@ go build ./...
 ### Start Server Locally
 ```bash
 go run ./cmd/server
+```
+
+---
+
+## 6. Docker Containerization & Compose Orchestration
+
+### Multi-Stage Build
+The backend uses a multi-stage Dockerfile located at `apps/backend/Dockerfile`:
+- **Builder Stage**: `golang:1.27-alpine` installs dependencies and compiles a statically linked, CGO-disabled binary (`CGO_ENABLED=0 GOOS=linux GOARCH=amd64`).
+- **Runtime Stage**: `alpine:latest` runs the binary as an unprivileged user (`appuser`, UID 10001) with enterprise certificates and timezone data.
+- **Container Health Check**: Evaluates liveness every 10 seconds via `wget -qO- http://localhost:8080/health`.
+
+### Docker Commands (Windows CMD)
+
+#### Build Backend Image
+```cmd
+docker compose build backend
+```
+
+#### Launch Core Stack (PostgreSQL, AI Engine, Backend)
+```cmd
+docker compose up -d postgres ai-engine backend
+```
+
+#### Check Container Status & Health
+```cmd
+docker compose ps
+```
+
+#### View Service Logs
+```cmd
+docker compose logs backend
+docker compose logs --tail=30 ai-engine
+```
+
+#### Verify Inter-Container Networking (Backend -> AI Engine)
+```cmd
+docker compose exec backend wget -qO- http://ai-engine:8000/health
+```
+
+#### Stop Services
+```cmd
+docker compose stop postgres ai-engine backend
 ```
