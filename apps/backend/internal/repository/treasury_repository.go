@@ -38,7 +38,7 @@ func (r *PgxTreasuryRepository) List(ctx context.Context, limit, offset int) ([]
 	defer cancel()
 
 	const query = `
-		SELECT id::text, name, base_currency, total_capital, risk_tolerance, min_liquidity_ratio, created_at, updated_at
+		SELECT id::text, name, base_currency, total_capital, risk_tolerance, min_liquidity_ratio, created_at, updated_at, owner_id::text
 		FROM corporate_treasuries
 		ORDER BY created_at DESC
 		LIMIT $1 OFFSET $2;
@@ -62,6 +62,7 @@ func (r *PgxTreasuryRepository) List(ctx context.Context, limit, offset int) ([]
 			&t.MinLiquidityRatio,
 			&t.CreatedAt,
 			&t.UpdatedAt,
+			&t.OwnerID,
 		)
 		if err != nil {
 			return nil, err
@@ -86,7 +87,7 @@ func (r *PgxTreasuryRepository) GetByID(ctx context.Context, id string) (*domain
 	defer cancel()
 
 	const query = `
-		SELECT id::text, name, base_currency, total_capital, risk_tolerance, min_liquidity_ratio, created_at, updated_at
+		SELECT id::text, name, base_currency, total_capital, risk_tolerance, min_liquidity_ratio, created_at, updated_at, owner_id::text
 		FROM corporate_treasuries
 		WHERE id = $1;
 	`
@@ -101,6 +102,7 @@ func (r *PgxTreasuryRepository) GetByID(ctx context.Context, id string) (*domain
 		&t.MinLiquidityRatio,
 		&t.CreatedAt,
 		&t.UpdatedAt,
+		&t.OwnerID,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -122,9 +124,9 @@ func (r *PgxTreasuryRepository) Create(ctx context.Context, input domain.CreateT
 	defer cancel()
 
 	const query = `
-		INSERT INTO corporate_treasuries (name, base_currency, total_capital, risk_tolerance, min_liquidity_ratio)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id::text, name, base_currency, total_capital, risk_tolerance, min_liquidity_ratio, created_at, updated_at;
+		INSERT INTO corporate_treasuries (name, base_currency, total_capital, risk_tolerance, min_liquidity_ratio, owner_id)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id::text, name, base_currency, total_capital, risk_tolerance, min_liquidity_ratio, created_at, updated_at, owner_id::text;
 	`
 
 	var t domain.Treasury
@@ -136,6 +138,7 @@ func (r *PgxTreasuryRepository) Create(ctx context.Context, input domain.CreateT
 		input.TotalCapital,
 		input.RiskTolerance,
 		input.MinLiquidityRatio,
+		input.OwnerID,
 	).Scan(
 		&t.ID,
 		&t.Name,
@@ -145,6 +148,7 @@ func (r *PgxTreasuryRepository) Create(ctx context.Context, input domain.CreateT
 		&t.MinLiquidityRatio,
 		&t.CreatedAt,
 		&t.UpdatedAt,
+		&t.OwnerID,
 	)
 	if err != nil {
 		return nil, err

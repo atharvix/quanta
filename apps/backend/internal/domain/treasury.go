@@ -15,6 +15,7 @@ type Treasury struct {
 	TotalCapital      float64   `json:"total_capital"`
 	RiskTolerance     float64   `json:"risk_tolerance"`
 	MinLiquidityRatio float64   `json:"min_liquidity_ratio"`
+	OwnerID           *string   `json:"owner_id,omitempty"`
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
 }
@@ -26,6 +27,7 @@ type CreateTreasuryInput struct {
 	TotalCapital      float64 `json:"total_capital"`
 	RiskTolerance     float64 `json:"risk_tolerance"`
 	MinLiquidityRatio float64 `json:"min_liquidity_ratio"`
+	OwnerID           *string `json:"owner_id,omitempty"`
 }
 
 // ApplyDefaults assigns production defaults if optional fields are omitted.

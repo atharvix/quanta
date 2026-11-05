@@ -15,12 +15,17 @@ var uuidRegex = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4
 
 // TreasuryService defines business operations on corporate treasuries.
 type TreasuryService struct {
-	repo repository.TreasuryRepository
+	repo     repository.TreasuryRepository
+	auditSvc *AuditService
 }
 
 // NewTreasuryService constructs a new service instance wrapping the repository layer.
-func NewTreasuryService(repo repository.TreasuryRepository) *TreasuryService {
-	return &TreasuryService{repo: repo}
+func NewTreasuryService(repo repository.TreasuryRepository, auditSvc ...*AuditService) *TreasuryService {
+	var a *AuditService
+	if len(auditSvc) > 0 {
+		a = auditSvc[0]
+	}
+	return &TreasuryService{repo: repo, auditSvc: a}
 }
 
 // List validates pagination arguments and queries treasuries.
@@ -56,5 +61,24 @@ func (s *TreasuryService) Create(ctx context.Context, input domain.CreateTreasur
 		return nil, &domain.ValidationError{Details: errs}
 	}
 
-	return s.repo.Create(ctx, input)
+	// Associate treasury with authenticated creator if not explicitly set
+	if input.OwnerID == nil {
+		if uid := domain.UserIDFromContext(ctx); uid != "" {
+			input.OwnerID = &uid
+		}
+	}
+
+	saved, err := s.repo.Create(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	if s.auditSvc != nil {
+		s.auditSvc.Record(ctx, domain.ActionTreasuryCreated, "treasury", &saved.ID, map[string]any{
+			"name":          saved.Name,
+			"total_capital": saved.TotalCapital,
+		})
+	}
+
+	return saved, nil
 }

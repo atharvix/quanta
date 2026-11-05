@@ -93,3 +93,74 @@ func TestTreasuryRepository_PostgreSQL_Integration(t *testing.T) {
 		t.Errorf("created treasury %s was not returned in List query", created.ID)
 	}
 }
+
+func TestStrategyRepository_PostgreSQL_Integration(t *testing.T) {
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		dbURL = "postgres://quanta_admin:quanta_secure_dev_password@localhost:5432/quanta_db?sslmode=disable"
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	db, err := database.NewPool(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("Failed to connect to PostgreSQL for integration test: %v", err)
+	}
+	defer db.Close()
+
+	treasuryRepo := NewPgxTreasuryRepository(db)
+	strategyRepo := NewPgxStrategyRepository(db)
+
+	// 1. Create a parent Treasury record
+	treasury, err := treasuryRepo.Create(ctx, domain.CreateTreasuryInput{
+		Name:         "Integration Strategy Corp " + time.Now().Format("15:04:05"),
+		TotalCapital: 100000000.0,
+	})
+	if err != nil {
+		t.Fatalf("failed to create parent treasury: %v", err)
+	}
+
+	// 2. Insert a StrategyExecutionLog
+	logInput := domain.StrategyExecutionLog{
+		TreasuryID:           treasury.ID,
+		AlgorithmUsed:        "astar",
+		ObjectiveValue:       0.345678,
+		RiskScore:            0.1250,
+		ExpectedReturn:       0.0850,
+		LiquidityRatio:       0.9200,
+		AllocationsJSON:      []byte(`{"gov_bond":70.0,"equity":30.0}`),
+		ConstraintsAuditJSON: []byte(`[{"constraint_id":"c_min_liq","satisfied":true}]`),
+		ExecutionTimeMS:      12.45,
+	}
+
+	createdLog, err := strategyRepo.CreateLog(ctx, logInput)
+	if err != nil {
+		t.Fatalf("failed to insert strategy execution log: %v", err)
+	}
+
+	if createdLog.ID == "" {
+		t.Fatalf("expected non-empty UUID for strategy log")
+	}
+	if createdLog.TreasuryID != treasury.ID {
+		t.Errorf("expected treasury_id %s, got %s", treasury.ID, createdLog.TreasuryID)
+	}
+
+	// 3. Retrieve log by ID
+	fetched, err := strategyRepo.GetLogByID(ctx, createdLog.ID)
+	if err != nil {
+		t.Fatalf("failed to get log by ID: %v", err)
+	}
+	if fetched.ID != createdLog.ID {
+		t.Errorf("expected ID %s, got %s", createdLog.ID, fetched.ID)
+	}
+
+	// 4. List logs by TreasuryID
+	list, err := strategyRepo.ListLogsByTreasuryID(ctx, treasury.ID, 10, 0)
+	if err != nil {
+		t.Fatalf("failed to list logs: %v", err)
+	}
+	if len(list) != 1 {
+		t.Errorf("expected 1 log in list, got %d", len(list))
+	}
+}

@@ -69,6 +69,11 @@ func (d *DB) Connect(ctx context.Context) error {
 	d.pool = pool
 	d.mu.Unlock()
 
+	// Automatically run idempotent schema migrations upon connection
+	if err := RunMigrations(ctx, pool); err != nil {
+		return fmt.Errorf("failed to run database migrations: %w", err)
+	}
+
 	return nil
 }
 
@@ -131,6 +136,9 @@ func (d *DB) StartBackgroundRetry(ctx context.Context, interval time.Duration) {
 
 				if err == nil {
 					log.Println("[INFO] database connected after retry")
+					if migErr := RunMigrations(ctx, d.Pool()); migErr != nil {
+						log.Printf("[ERROR] Database migrations failed after retry: %v", migErr)
+					}
 				}
 			}
 		}

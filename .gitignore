@@ -55,5 +55,10 @@ go.work
 *.log
 logs/
 
-# Secrets
+# Secrets & Environment Variables
 .env
+.env.*
+.env*.local
+*.env
+!.env.example
+!**/.env.example

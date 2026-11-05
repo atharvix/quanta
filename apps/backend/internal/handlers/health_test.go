@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/atharvix/quanta/apps/backend/internal/clients"
+	"github.com/atharvix/quanta/apps/backend/internal/domain"
 )
 
-// MockPinger implements database.Pinger for testing health endpoints.
 type MockPinger struct {
 	err error
 }
@@ -18,8 +20,32 @@ func (m *MockPinger) Ping(ctx context.Context) error {
 	return m.err
 }
 
+type MockAIHealthChecker struct {
+	err error
+}
+
+func (m *MockAIHealthChecker) Health(ctx context.Context) error {
+	return m.err
+}
+
+func (m *MockAIHealthChecker) GenerateStrategy(ctx context.Context, problem any, algorithm string) (*clients.AIGenerateResponse, error) {
+	return nil, nil
+}
+
+func (m *MockAIHealthChecker) CompareSearches(ctx context.Context, problem any) (json.RawMessage, error) {
+	return nil, nil
+}
+
+func (m *MockAIHealthChecker) AnalyzeRisk(ctx context.Context, req domain.AIRiskAnalyzeRequest) (*domain.AIRiskAnalyzeResponse, error) {
+	return nil, nil
+}
+
+func (m *MockAIHealthChecker) AdversarialStressTest(ctx context.Context, problem any) (*domain.AdversarialStressTestResult, error) {
+	return nil, nil
+}
+
 func TestHealthHandler_Root(t *testing.T) {
-	h := NewHealthHandler(nil)
+	h := NewHealthHandler(nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rr := httptest.NewRecorder()
@@ -41,7 +67,7 @@ func TestHealthHandler_Root(t *testing.T) {
 }
 
 func TestHealthHandler_Liveness(t *testing.T) {
-	h := NewHealthHandler(nil)
+	h := NewHealthHandler(nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rr := httptest.NewRecorder()
@@ -63,8 +89,7 @@ func TestHealthHandler_Liveness(t *testing.T) {
 }
 
 func TestHealthHandler_DatabaseHealth_NilPinger(t *testing.T) {
-	// When database could not connect on startup, pinger is nil
-	h := NewHealthHandler(nil)
+	h := NewHealthHandler(nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
 	rr := httptest.NewRecorder()
@@ -74,45 +99,41 @@ func TestHealthHandler_DatabaseHealth_NilPinger(t *testing.T) {
 	if rr.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected status 503, got %d", rr.Code)
 	}
-
-	var res map[string]string
-	if err := json.NewDecoder(rr.Body).Decode(&res); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
-
-	if res["status"] != "degraded" || res["database"] != "down" {
-		t.Errorf("expected degraded/down response, got: %v", res)
-	}
 }
 
-func TestHealthHandler_DatabaseHealth_FailingPing(t *testing.T) {
-	// When database ping fails with network or timeout error
-	mock := &MockPinger{err: errors.New("connection refused")}
-	h := NewHealthHandler(mock)
+func TestHealthHandler_DatabaseHealth_DBUp_AIDown(t *testing.T) {
+	dbMock := &MockPinger{err: nil}
+	aiMock := &MockAIHealthChecker{err: errors.New("ai engine down")}
+	h := NewHealthHandler(dbMock, aiMock)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
 	rr := httptest.NewRecorder()
 
 	h.DatabaseHealth(rr, req)
 
-	if rr.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected status 503, got %d", rr.Code)
+	// DB is primary, so overall status is 200 OK
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
 	}
 
-	var res map[string]string
+	var res struct {
+		Status       string            `json:"status"`
+		Database     string            `json:"database"`
+		Dependencies map[string]string `json:"dependencies"`
+	}
 	if err := json.NewDecoder(rr.Body).Decode(&res); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
+		t.Fatalf("failed to decode body: %v", err)
 	}
 
-	// Internal error message must never leak
-	if res["status"] != "degraded" || res["database"] != "down" {
-		t.Errorf("expected degraded/down response, got: %v", res)
+	if res.Database != "up" || res.Dependencies["ai_engine"] != "down" {
+		t.Errorf("unexpected health status payload: %+v", res)
 	}
 }
 
-func TestHealthHandler_DatabaseHealth_Success(t *testing.T) {
-	mock := &MockPinger{err: nil}
-	h := NewHealthHandler(mock)
+func TestHealthHandler_DatabaseHealth_AllUp(t *testing.T) {
+	dbMock := &MockPinger{err: nil}
+	aiMock := &MockAIHealthChecker{err: nil}
+	h := NewHealthHandler(dbMock, aiMock)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
 	rr := httptest.NewRecorder()
@@ -123,12 +144,16 @@ func TestHealthHandler_DatabaseHealth_Success(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", rr.Code)
 	}
 
-	var res map[string]string
+	var res struct {
+		Status       string            `json:"status"`
+		Database     string            `json:"database"`
+		Dependencies map[string]string `json:"dependencies"`
+	}
 	if err := json.NewDecoder(rr.Body).Decode(&res); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
+		t.Fatalf("failed to decode body: %v", err)
 	}
 
-	if res["status"] != "ok" || res["database"] != "up" {
-		t.Errorf("expected ok/up response, got: %v", res)
+	if res.Database != "up" || res.Dependencies["ai_engine"] != "up" {
+		t.Errorf("unexpected health status payload: %+v", res)
 	}
 }

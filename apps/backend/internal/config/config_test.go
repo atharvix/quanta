@@ -11,6 +11,9 @@ func TestLoadDefaults(t *testing.T) {
 	os.Unsetenv("DATABASE_URL")
 	os.Unsetenv("AI_ENGINE_URL")
 	os.Unsetenv("OPTIMIZATION_ENGINE_URL")
+	os.Unsetenv("JWT_SECRET")
+	os.Unsetenv("JWT_TTL")
+	os.Unsetenv("CORS_ALLOWED_ORIGINS")
 
 	cfg := Load()
 
@@ -25,6 +28,15 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.OptimizationEngineURL != "http://localhost:8001" {
 		t.Errorf("expected default OptimizationEngineURL 'http://localhost:8001', got '%s'", cfg.OptimizationEngineURL)
+	}
+	if cfg.JWTSecret != "dev-only-change-me-please" {
+		t.Errorf("expected default JWTSecret 'dev-only-change-me-please', got '%s'", cfg.JWTSecret)
+	}
+	if !cfg.IsDefaultJWTSecret() {
+		t.Errorf("expected IsDefaultJWTSecret to be true for default secret")
+	}
+	if len(cfg.CORSAllowedOrigins) != 1 || cfg.CORSAllowedOrigins[0] != "http://localhost:3000" {
+		t.Errorf("expected default CORSAllowedOrigins ['http://localhost:3000'], got %v", cfg.CORSAllowedOrigins)
 	}
 }
 
