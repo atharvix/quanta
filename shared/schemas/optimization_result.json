@@ -1,0 +1,86 @@
+{
+  "description": "Canonical result schema returned by all classical and quantum optimization solvers.",
+  "properties": {
+    "method": {
+      "description": "Optimization algorithm used (e.g. exact, greedy, sa, slsqp, qaoa)",
+      "title": "Method",
+      "type": "string"
+    },
+    "status": {
+      "description": "Solver termination status: optimal | feasible | infeasible | error",
+      "title": "Status",
+      "type": "string"
+    },
+    "allocation": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "description": "Map of asset name -> selected (0/1) or allocation weight",
+      "title": "Allocation",
+      "type": "object"
+    },
+    "objective_value": {
+      "description": "Achieved objective function score",
+      "title": "Objective Value",
+      "type": "number"
+    },
+    "portfolio_return": {
+      "description": "Expected annualized portfolio return",
+      "title": "Portfolio Return",
+      "type": "number"
+    },
+    "portfolio_risk": {
+      "description": "Portfolio risk / variance metric",
+      "title": "Portfolio Risk",
+      "type": "number"
+    },
+    "liquidity": {
+      "description": "Achieved portfolio liquidity fraction",
+      "title": "Liquidity",
+      "type": "number"
+    },
+    "capital_used": {
+      "description": "Total capital deployed in Rs Cr",
+      "title": "Capital Used",
+      "type": "number"
+    },
+    "feasible": {
+      "description": "True if all hard constraints are satisfied",
+      "title": "Feasible",
+      "type": "boolean"
+    },
+    "constraint_violations": {
+      "description": "List of violated constraints",
+      "items": {
+        "type": "string"
+      },
+      "title": "Constraint Violations",
+      "type": "array"
+    },
+    "runtime_ms": {
+      "description": "Execution wall-clock time in ms (or classical simulation time for QAOA)",
+      "title": "Runtime Ms",
+      "type": "number"
+    },
+    "metadata": {
+      "additionalProperties": true,
+      "description": "Algorithm-specific metadata (qubits, p, evals, etc.)",
+      "title": "Metadata",
+      "type": "object"
+    }
+  },
+  "required": [
+    "method",
+    "status",
+    "allocation",
+    "objective_value",
+    "portfolio_return",
+    "portfolio_risk",
+    "liquidity",
+    "capital_used",
+    "feasible",
+    "runtime_ms"
+  ],
+  "title": "OptimizationResult",
+  "type": "object"
+}

@@ -1,0 +1,501 @@
+{
+  "$defs": {
+    "Asset": {
+      "description": "Investment asset specification.\n\nRequired contract fields: name, cost, expected_return, risk, liquidity.",
+      "properties": {
+        "name": {
+          "description": "Asset identifier / name",
+          "title": "Name",
+          "type": "string"
+        },
+        "cost": {
+          "default": 0.0,
+          "description": "Acquisition / transaction cost (Rs Cr or fraction)",
+          "minimum": 0.0,
+          "title": "Cost",
+          "type": "number"
+        },
+        "expected_return": {
+          "description": "Annualized expected return fraction",
+          "maximum": 5.0,
+          "minimum": -1.0,
+          "title": "Expected Return",
+          "type": "number"
+        },
+        "risk": {
+          "description": "Normalized risk / volatility index",
+          "maximum": 2.0,
+          "minimum": 0.0,
+          "title": "Risk",
+          "type": "number"
+        },
+        "liquidity": {
+          "description": "Normalized liquidity factor in [0, 1]",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Liquidity",
+          "type": "number"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Unique asset ID (defaults to name)",
+          "title": "Id"
+        },
+        "asset_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "other",
+          "description": "Asset class type",
+          "title": "Asset Type"
+        },
+        "volatility": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0.05,
+          "description": "Annual return volatility",
+          "title": "Volatility"
+        },
+        "min_investment": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0.0,
+          "description": "Minimum allocation limit",
+          "title": "Min Investment"
+        },
+        "max_investment": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum allocation limit",
+          "title": "Max Investment"
+        },
+        "group": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Asset sector or grouping tag",
+          "title": "Group"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "description": "Arbitrary annotations",
+          "title": "Metadata",
+          "type": "object"
+        }
+      },
+      "required": [
+        "name",
+        "expected_return",
+        "risk",
+        "liquidity"
+      ],
+      "title": "Asset",
+      "type": "object"
+    },
+    "Constraint": {
+      "description": "Compliance rule or allocation limit constraint.",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Constraint identifier",
+          "title": "Id"
+        },
+        "constraint_type": {
+          "description": "Type of constraint (e.g. minimum_liquidity, budget)",
+          "title": "Constraint Type",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "",
+          "description": "Policy description",
+          "title": "Description"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "description": "Numerical thresholds",
+          "title": "Parameters",
+          "type": "object"
+        },
+        "severity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "critical",
+          "description": "Severity level",
+          "title": "Severity"
+        },
+        "penalty_weight": {
+          "default": 10.0,
+          "description": "Penalty weight for soft constraints",
+          "minimum": 0.0,
+          "title": "Penalty Weight",
+          "type": "number"
+        }
+      },
+      "required": [
+        "constraint_type"
+      ],
+      "title": "Constraint",
+      "type": "object"
+    },
+    "FinancialProblem": {
+      "description": "Canonical specification of a corporate capital optimization problem.\n\nAll contract fields required:\n    capital, assets, liabilities, constraints, risk_tolerance, minimum_liquidity, objective.",
+      "properties": {
+        "capital": {
+          "description": "Total balance sheet capital (Rs Cr)",
+          "exclusiveMinimum": 0.0,
+          "title": "Capital",
+          "type": "number"
+        },
+        "assets": {
+          "description": "Eligible investment assets",
+          "items": {
+            "$ref": "#/$defs/Asset"
+          },
+          "title": "Assets",
+          "type": "array"
+        },
+        "liabilities": {
+          "description": "Corporate liabilities",
+          "items": {
+            "$ref": "#/$defs/Liability"
+          },
+          "title": "Liabilities",
+          "type": "array"
+        },
+        "constraints": {
+          "description": "Policy constraints",
+          "items": {
+            "$ref": "#/$defs/Constraint"
+          },
+          "title": "Constraints",
+          "type": "array"
+        },
+        "risk_tolerance": {
+          "default": 0.5,
+          "description": "Risk tolerance in [0, 1]",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Risk Tolerance",
+          "type": "number"
+        },
+        "minimum_liquidity": {
+          "default": 0.2,
+          "description": "Liquidity floor fraction",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Minimum Liquidity",
+          "type": "number"
+        },
+        "objective": {
+          "default": "maximize_risk_adjusted_return",
+          "description": "Target objective",
+          "title": "Objective",
+          "type": "string"
+        },
+        "step_size": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 1.0,
+          "description": "Discretization step size (Rs Cr)",
+          "title": "Step Size"
+        },
+        "max_exposure_pct": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Max exposure per asset",
+          "title": "Max Exposure Pct"
+        },
+        "group_caps": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Asset class / sector caps",
+          "title": "Group Caps"
+        },
+        "covariance_matrix": {
+          "anyOf": [
+            {
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Explicit covariance matrix",
+          "title": "Covariance Matrix"
+        },
+        "candidate_subset": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Restricted asset IDs from AI engine",
+          "title": "Candidate Subset"
+        },
+        "market_state": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "normal",
+          "description": "Market regime indicator",
+          "title": "Market State"
+        }
+      },
+      "required": [
+        "capital",
+        "assets"
+      ],
+      "title": "FinancialProblem",
+      "type": "object"
+    },
+    "Liability": {
+      "description": "Corporate debt or liability obligation.\n\nRequired contract fields: amount, interest_rate, maturity.",
+      "properties": {
+        "amount": {
+          "default": 0.0,
+          "description": "Obligation principal amount in Rs Cr",
+          "minimum": 0.0,
+          "title": "Amount",
+          "type": "number"
+        },
+        "interest_rate": {
+          "default": 0.0,
+          "description": "Annual interest coupon fraction",
+          "maximum": 2.0,
+          "minimum": 0.0,
+          "title": "Interest Rate",
+          "type": "number"
+        },
+        "maturity": {
+          "default": 12,
+          "description": "Time to maturity in months",
+          "minimum": 0,
+          "title": "Maturity",
+          "type": "integer"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Unique liability ID",
+          "title": "Id"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "liability",
+          "description": "Obligation description",
+          "title": "Name"
+        },
+        "principal": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Alias for amount",
+          "title": "Principal"
+        },
+        "maturity_months": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Alias for maturity",
+          "title": "Maturity Months"
+        },
+        "priority": {
+          "default": 1,
+          "description": "Seniority priority level",
+          "minimum": 1,
+          "title": "Priority",
+          "type": "integer"
+        },
+        "is_mandatory_reserve": {
+          "default": true,
+          "description": "Whether liquidity must be reserved",
+          "title": "Is Mandatory Reserve",
+          "type": "boolean"
+        }
+      },
+      "title": "Liability",
+      "type": "object"
+    }
+  },
+  "description": "API request payload for single-method optimization.",
+  "properties": {
+    "problem": {
+      "$ref": "#/$defs/FinancialProblem",
+      "description": "Treasury capital allocation problem"
+    },
+    "method": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": "exact",
+      "description": "Solver method: exact | greedy | sa | slsqp | milp | qaoa",
+      "title": "Method"
+    },
+    "options": {
+      "additionalProperties": true,
+      "description": "Solver hyperparameters (e.g. p, seed, shots, max_iter)",
+      "title": "Options",
+      "type": "object"
+    },
+    "candidate_subset": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional subset of asset names to consider",
+      "title": "Candidate Subset"
+    }
+  },
+  "required": [
+    "problem"
+  ],
+  "title": "OptimizationRequest",
+  "type": "object"
+}
