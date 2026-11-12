@@ -55,6 +55,9 @@ services:
       - DATABASE_URL=postgres://${POSTGRES_USER:-quanta_admin}:${POSTGRES_PASSWORD:-quanta_secure_dev_password}@postgres:5432/${POSTGRES_DB:-quanta_db}?sslmode=disable
       - AI_ENGINE_URL=http://ai-engine:8000
       - OPTIMIZATION_ENGINE_URL=http://optimization-engine:8001
+      - JWT_SECRET=
+      - JWT_TTL=
+      - CORS_ALLOWED_ORIGINS=
     ports:
       - "8080:8080"
     depends_on:

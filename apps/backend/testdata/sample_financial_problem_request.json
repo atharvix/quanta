@@ -1,0 +1,65 @@
+{
+  "treasury_id": "acd07916-d2df-403e-8fbf-07dcd01b06dc",
+  "algorithm": "astar",
+  "problem": {
+    "capital": 100.0,
+    "step_size": 5.0,
+    "assets": [
+      {
+        "id": "gov_bond",
+        "name": "Government Bonds",
+        "asset_type": "gov_bond",
+        "cost": 0.001,
+        "expected_return": 0.07,
+        "risk": 0.05,
+        "liquidity": 0.95,
+        "volatility": 0.03
+      },
+      {
+        "id": "bluechip_equity",
+        "name": "Bluechip Equity Index",
+        "asset_type": "equity",
+        "cost": 0.002,
+        "expected_return": 0.12,
+        "risk": 0.18,
+        "liquidity": 0.85,
+        "volatility": 0.15
+      },
+      {
+        "id": "commercial_paper",
+        "name": "Corporate Commercial Paper",
+        "asset_type": "corp_bond",
+        "cost": 0.001,
+        "expected_return": 0.08,
+        "risk": 0.08,
+        "liquidity": 0.75,
+        "volatility": 0.06
+      }
+    ],
+    "liabilities": [
+      {
+        "id": "senior_loan",
+        "name": "Senior Revolving Facility",
+        "principal": 15.0,
+        "interest_rate": 0.065,
+        "maturity_months": 12,
+        "priority": 1,
+        "is_mandatory_reserve": true
+      }
+    ],
+    "constraints": [
+      {
+        "id": "c_min_liq",
+        "constraint_type": "minimum_liquidity",
+        "description": "Ensure portfolio liquidity meets 20% floor",
+        "parameters": {
+          "threshold": 0.20
+        }
+      }
+    ],
+    "risk_tolerance": 0.50,
+    "minimum_liquidity": 0.20,
+    "objective": "maximize_risk_adjusted_return",
+    "market_state": "normal"
+  }
+}
