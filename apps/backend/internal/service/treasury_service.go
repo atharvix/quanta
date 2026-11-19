@@ -44,13 +44,22 @@ func (s *TreasuryService) List(ctx context.Context, limit, offset int) ([]domain
 	return s.repo.List(ctx, limit, offset)
 }
 
-// GetByID validates the UUID format before querying the repository.
+// GetByID validates the UUID format before querying the repository and enforcing resource-level authorization.
 func (s *TreasuryService) GetByID(ctx context.Context, id string) (*domain.Treasury, error) {
 	if !uuidRegex.MatchString(id) {
 		return nil, domain.ErrInvalidID
 	}
 
-	return s.repo.GetByID(ctx, id)
+	treasury, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := domain.CheckTreasuryAccess(ctx, treasury); err != nil {
+		return nil, err
+	}
+
+	return treasury, nil
 }
 
 // Create applies domain defaults, validates input invariants, and creates the treasury.

@@ -12,6 +12,9 @@ import (
 
 // Config holds all environment-based configuration for the QUANTA backend service.
 type Config struct {
+	// Environment indicates deployment environment (e.g. "development", "staging", "production").
+	Environment string
+
 	// Port specifies the HTTP port the backend listens on (default: 8080).
 	Port string
 
@@ -36,6 +39,11 @@ type Config struct {
 
 // Load reads configuration from environment variables or applies sensible defaults.
 func Load() *Config {
+	env := getEnv("APP_ENV", "")
+	if env == "" {
+		env = getEnv("GO_ENV", "development")
+	}
+
 	ttlStr := getEnv("JWT_TTL", "1h")
 	jwtTTL, err := time.ParseDuration(ttlStr)
 	if err != nil {
@@ -55,6 +63,7 @@ func Load() *Config {
 	}
 
 	return &Config{
+		Environment:           strings.ToLower(env),
 		Port:                  getEnv("PORT", "8080"),
 		DatabaseURL:           getEnv("DATABASE_URL", "postgres://quanta_admin:quanta_secure_dev_password@localhost:5432/quanta_db?sslmode=disable"),
 		AIEngineURL:           getEnv("AI_ENGINE_URL", "http://localhost:8000"),
@@ -63,6 +72,23 @@ func Load() *Config {
 		JWTTTL:                jwtTTL,
 		CORSAllowedOrigins:    corsOrigins,
 	}
+}
+
+// Validate verifies configuration sanity and rejects insecure settings in production.
+func (c *Config) Validate() error {
+	if c.Port == "" {
+		return fmt.Errorf("PORT must not be empty")
+	}
+	if c.DatabaseURL == "" {
+		return fmt.Errorf("DATABASE_URL must not be empty")
+	}
+	if c.Environment == "production" && c.IsDefaultJWTSecret() {
+		return fmt.Errorf("insecure default JWT_SECRET is strictly forbidden in production mode")
+	}
+	if len(c.JWTSecret) < 32 && c.Environment == "production" {
+		return fmt.Errorf("production JWT_SECRET must be at least 32 characters for HMAC-SHA256 security")
+	}
+	return nil
 }
 
 // IsDefaultJWTSecret returns true if the JWT secret matches the default development fallback.
@@ -103,8 +129,8 @@ func (c *Config) String() string {
 	if c.IsDefaultJWTSecret() {
 		jwtStatus = "default-insecure"
 	}
-	return fmt.Sprintf("Config{Port: %s, DatabaseURL: %s, AIEngineURL: %s, OptimizationEngineURL: %s, JWTSecret: [%s], JWTTTL: %s, CORSAllowedOrigins: %v}",
-		c.Port, c.MaskedDatabaseURL(), c.AIEngineURL, c.OptimizationEngineURL, jwtStatus, c.JWTTTL, c.CORSAllowedOrigins)
+	return fmt.Sprintf("Config{Environment: %s, Port: %s, DatabaseURL: %s, AIEngineURL: %s, OptimizationEngineURL: %s, JWTSecret: [%s], JWTTTL: %s, CORSAllowedOrigins: %v}",
+		c.Environment, c.Port, c.MaskedDatabaseURL(), c.AIEngineURL, c.OptimizationEngineURL, jwtStatus, c.JWTTTL, c.CORSAllowedOrigins)
 }
 
 // getEnv retrieves an environment variable or returns defaultVal if unset or empty.

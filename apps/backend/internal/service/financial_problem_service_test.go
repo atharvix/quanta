@@ -140,3 +140,102 @@ func TestFinancialProblemService_Create(t *testing.T) {
 		}
 	})
 }
+
+func TestFinancialProblemService_Authorization_ReadPaths(t *testing.T) {
+	ownerID := "user-owner-123"
+	nonOwnerID := "user-analyst-456"
+	adminID := "user-admin-789"
+	validTreasuryID := "123e4567-e89b-12d3-a456-426614174000"
+	validFPID := "323e4567-e89b-12d3-a456-426614174000"
+
+	tRepo := &MockTreasuryRepository{
+		getByIDFn: func(ctx context.Context, id string) (*domain.Treasury, error) {
+			return &domain.Treasury{
+				ID:        validTreasuryID,
+				Name:      "Owned Corp",
+				OwnerID:   &ownerID,
+				CreatedAt: time.Now(),
+			}, nil
+		},
+	}
+	fpRepo := &MockFPRepository{
+		getByIDFn: func(ctx context.Context, id string) (*domain.FinancialProblemEntity, error) {
+			return &domain.FinancialProblemEntity{
+				ID:         id,
+				TreasuryID: validTreasuryID,
+			}, nil
+		},
+		listFn: func(ctx context.Context, limit, offset int, treasuryID string) ([]domain.FinancialProblemEntity, error) {
+			return []domain.FinancialProblemEntity{
+				{ID: validFPID, TreasuryID: validTreasuryID},
+			}, nil
+		},
+	}
+
+	svc := NewFinancialProblemService(tRepo, fpRepo, nil, nil, nil)
+
+	ownerCtx := domain.WithUserContext(context.Background(), ownerID, "owner@example.com", domain.RoleAnalyst)
+	nonOwnerCtx := domain.WithUserContext(context.Background(), nonOwnerID, "other@example.com", domain.RoleAnalyst)
+	adminCtx := domain.WithUserContext(context.Background(), adminID, "admin@example.com", domain.RoleAdmin)
+
+	t.Run("GetByID - Owner access succeeds", func(t *testing.T) {
+		fp, err := svc.GetByID(ownerCtx, validFPID)
+		if err != nil {
+			t.Fatalf("unexpected error for owner: %v", err)
+		}
+		if fp.ID != validFPID {
+			t.Errorf("expected ID '%s', got '%s'", validFPID, fp.ID)
+		}
+	})
+
+	t.Run("GetByID - Non-owner returns ErrForbidden", func(t *testing.T) {
+		_, err := svc.GetByID(nonOwnerCtx, validFPID)
+		if !errors.Is(err, domain.ErrForbidden) {
+			t.Fatalf("expected ErrForbidden for non-owner, got: %v", err)
+		}
+	})
+
+	t.Run("GetByID - Admin access succeeds", func(t *testing.T) {
+		fp, err := svc.GetByID(adminCtx, validFPID)
+		if err != nil {
+			t.Fatalf("unexpected error for admin: %v", err)
+		}
+		if fp.ID != validFPID {
+			t.Errorf("expected ID '%s', got '%s'", validFPID, fp.ID)
+		}
+	})
+
+	t.Run("List - Non-owner without treasury_id returns ErrForbidden", func(t *testing.T) {
+		_, err := svc.List(nonOwnerCtx, 10, 0, "")
+		if !errors.Is(err, domain.ErrForbidden) {
+			t.Fatalf("expected ErrForbidden for non-admin listing without treasury_id, got: %v", err)
+		}
+	})
+
+	t.Run("List - Non-owner with other user's treasury_id returns ErrForbidden", func(t *testing.T) {
+		_, err := svc.List(nonOwnerCtx, 10, 0, validTreasuryID)
+		if !errors.Is(err, domain.ErrForbidden) {
+			t.Fatalf("expected ErrForbidden for non-owner, got: %v", err)
+		}
+	})
+
+	t.Run("List - Owner with treasury_id succeeds", func(t *testing.T) {
+		fps, err := svc.List(ownerCtx, 10, 0, validTreasuryID)
+		if err != nil {
+			t.Fatalf("unexpected error for owner: %v", err)
+		}
+		if len(fps) != 1 {
+			t.Errorf("expected 1 problem, got %d", len(fps))
+		}
+	})
+
+	t.Run("List - Admin without treasury_id succeeds across all", func(t *testing.T) {
+		fps, err := svc.List(adminCtx, 10, 0, "")
+		if err != nil {
+			t.Fatalf("unexpected error for admin: %v", err)
+		}
+		if len(fps) != 1 {
+			t.Errorf("expected 1 problem, got %d", len(fps))
+		}
+	})
+}

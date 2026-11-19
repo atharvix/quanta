@@ -65,6 +65,10 @@ func (h *StrategyHandler) Generate(w http.ResponseWriter, r *http.Request) {
 			WriteError(w, http.StatusNotFound, "treasury not found")
 			return
 		}
+		if errors.Is(err, domain.ErrForbidden) {
+			WriteError(w, http.StatusForbidden, "forbidden: access to this treasury is restricted")
+			return
+		}
 		if errors.Is(err, domain.ErrUpstreamUnavailable) {
 			WriteError(w, http.StatusBadGateway, "AI engine unavailable")
 			return
@@ -115,6 +119,10 @@ func (h *StrategyHandler) ListByTreasury(w http.ResponseWriter, r *http.Request)
 			WriteError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		if errors.Is(err, domain.ErrForbidden) {
+			WriteError(w, http.StatusForbidden, "forbidden: insufficient permissions for this treasury")
+			return
+		}
 		if errors.Is(err, domain.ErrDatabaseUnavailable) {
 			WriteError(w, http.StatusServiceUnavailable, "database unavailable")
 			return
@@ -143,6 +151,10 @@ func (h *StrategyHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		}
 		if errors.Is(err, domain.ErrNotFound) {
 			WriteError(w, http.StatusNotFound, "strategy log not found")
+			return
+		}
+		if errors.Is(err, domain.ErrForbidden) {
+			WriteError(w, http.StatusForbidden, "forbidden: insufficient permissions for this strategy")
 			return
 		}
 		if errors.Is(err, domain.ErrDatabaseUnavailable) {

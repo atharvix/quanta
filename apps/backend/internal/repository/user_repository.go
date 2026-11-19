@@ -36,8 +36,7 @@ func NewPgxUserRepository(db *database.DB) *PgxUserRepository {
 
 // Create inserts a new user record. Returns ErrEmailAlreadyExists on duplicate email.
 func (r *PgxUserRepository) Create(ctx context.Context, user domain.User) (*domain.User, error) {
-	pool := r.db.Pool()
-	if pool == nil {
+	if r.db == nil || r.db.Pool() == nil {
 		return nil, domain.ErrDatabaseUnavailable
 	}
 
@@ -52,7 +51,7 @@ func (r *PgxUserRepository) Create(ctx context.Context, user domain.User) (*doma
 
 	var saved domain.User
 	var role string
-	err := pool.QueryRow(
+	err := r.db.Pool().QueryRow(
 		timeoutCtx,
 		query,
 		user.Email,
@@ -81,8 +80,7 @@ func (r *PgxUserRepository) Create(ctx context.Context, user domain.User) (*doma
 
 // GetByEmail retrieves a user by email address. Returns ErrNotFound if no match.
 func (r *PgxUserRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
-	pool := r.db.Pool()
-	if pool == nil {
+	if r.db == nil || r.db.Pool() == nil {
 		return nil, domain.ErrDatabaseUnavailable
 	}
 
@@ -97,7 +95,7 @@ func (r *PgxUserRepository) GetByEmail(ctx context.Context, email string) (*doma
 
 	var user domain.User
 	var role string
-	err := pool.QueryRow(timeoutCtx, query, email).Scan(
+	err := r.db.Pool().QueryRow(timeoutCtx, query, email).Scan(
 		&user.ID,
 		&user.Email,
 		&user.PasswordHash,
@@ -118,8 +116,7 @@ func (r *PgxUserRepository) GetByEmail(ctx context.Context, email string) (*doma
 
 // GetByID retrieves a user by UUID. Returns ErrNotFound if no match.
 func (r *PgxUserRepository) GetByID(ctx context.Context, id string) (*domain.User, error) {
-	pool := r.db.Pool()
-	if pool == nil {
+	if r.db == nil || r.db.Pool() == nil {
 		return nil, domain.ErrDatabaseUnavailable
 	}
 
@@ -134,7 +131,7 @@ func (r *PgxUserRepository) GetByID(ctx context.Context, id string) (*domain.Use
 
 	var user domain.User
 	var role string
-	err := pool.QueryRow(timeoutCtx, query, id).Scan(
+	err := r.db.Pool().QueryRow(timeoutCtx, query, id).Scan(
 		&user.ID,
 		&user.Email,
 		&user.PasswordHash,
@@ -155,8 +152,7 @@ func (r *PgxUserRepository) GetByID(ctx context.Context, id string) (*domain.Use
 
 // Count returns the total number of registered users.
 func (r *PgxUserRepository) Count(ctx context.Context) (int, error) {
-	pool := r.db.Pool()
-	if pool == nil {
+	if r.db == nil || r.db.Pool() == nil {
 		return 0, domain.ErrDatabaseUnavailable
 	}
 
@@ -164,7 +160,7 @@ func (r *PgxUserRepository) Count(ctx context.Context) (int, error) {
 	defer cancel()
 
 	var count int
-	err := pool.QueryRow(timeoutCtx, "SELECT COUNT(*) FROM users;").Scan(&count)
+	err := r.db.Pool().QueryRow(timeoutCtx, "SELECT COUNT(*) FROM users;").Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count users: %w", err)
 	}
@@ -174,8 +170,7 @@ func (r *PgxUserRepository) Count(ctx context.Context) (int, error) {
 
 // List retrieves all registered users ordered by creation date ascending.
 func (r *PgxUserRepository) List(ctx context.Context) ([]domain.User, error) {
-	pool := r.db.Pool()
-	if pool == nil {
+	if r.db == nil || r.db.Pool() == nil {
 		return nil, domain.ErrDatabaseUnavailable
 	}
 
@@ -188,7 +183,7 @@ func (r *PgxUserRepository) List(ctx context.Context) ([]domain.User, error) {
 		ORDER BY created_at ASC;
 	`
 
-	rows, err := pool.Query(timeoutCtx, query)
+	rows, err := r.db.Pool().Query(timeoutCtx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list users: %w", err)
 	}
@@ -223,15 +218,52 @@ func (r *PgxUserRepository) List(ctx context.Context) ([]domain.User, error) {
 	return users, nil
 }
 
-// UpdateRole modifies the role of a user identified by UUID.
+// UpdateRole modifies the role of a user identified by UUID inside a transaction
+// with row locking and a PostgreSQL transaction-level advisory lock to serialize concurrent admin demotions.
 func (r *PgxUserRepository) UpdateRole(ctx context.Context, id string, role domain.Role) (*domain.User, error) {
-	pool := r.db.Pool()
-	if pool == nil {
+	if r.db == nil || r.db.Pool() == nil {
 		return nil, domain.ErrDatabaseUnavailable
 	}
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
+
+	tx, err := r.db.Pool().Begin(timeoutCtx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(timeoutCtx)
+
+	// Fetch target user with row lock to serialize concurrent updates on the same user
+	var currentRole string
+	err = tx.QueryRow(timeoutCtx, "SELECT role FROM users WHERE id = $1 FOR UPDATE;", id).Scan(&currentRole)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to lock user for role update: %w", err)
+	}
+
+	// Atomically verify sole-admin demotion invariant.
+	// When demoting an existing admin, acquire a PostgreSQL transaction-level advisory lock
+	// to strictly serialize all admin demotion transactions across the cluster.
+	// This prevents the race condition where two concurrent transactions simultaneously
+	// demote different admins when exactly two admins exist, which would leave zero admins.
+	if domain.Role(currentRole) == domain.RoleAdmin && role != domain.RoleAdmin {
+		const adminDemotionLockKey int64 = 847291048102
+		if _, err := tx.Exec(timeoutCtx, "SELECT pg_advisory_xact_lock($1);", adminDemotionLockKey); err != nil {
+			return nil, fmt.Errorf("failed to acquire admin demotion advisory lock: %w", err)
+		}
+
+		var adminCount int
+		err = tx.QueryRow(timeoutCtx, "SELECT COUNT(*) FROM users WHERE role = 'admin';").Scan(&adminCount)
+		if err != nil {
+			return nil, fmt.Errorf("failed to count admins: %w", err)
+		}
+		if adminCount <= 1 {
+			return nil, domain.ErrCannotDemoteOnlyAdmin
+		}
+	}
 
 	const query = `
 		UPDATE users
@@ -242,7 +274,7 @@ func (r *PgxUserRepository) UpdateRole(ctx context.Context, id string, role doma
 
 	var updated domain.User
 	var roleStr string
-	err := pool.QueryRow(timeoutCtx, query, string(role), id).Scan(
+	err = tx.QueryRow(timeoutCtx, query, string(role), id).Scan(
 		&updated.ID,
 		&updated.Email,
 		&updated.PasswordHash,
@@ -251,20 +283,20 @@ func (r *PgxUserRepository) UpdateRole(ctx context.Context, id string, role doma
 		&updated.CreatedAt,
 	)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, domain.ErrNotFound
-		}
 		return nil, fmt.Errorf("failed to update user role: %w", err)
 	}
 	updated.Role = domain.Role(roleStr)
+
+	if err := tx.Commit(timeoutCtx); err != nil {
+		return nil, fmt.Errorf("failed to commit role update: %w", err)
+	}
 
 	return &updated, nil
 }
 
 // CountAdmins returns the total number of users currently holding the admin role.
 func (r *PgxUserRepository) CountAdmins(ctx context.Context) (int, error) {
-	pool := r.db.Pool()
-	if pool == nil {
+	if r.db == nil || r.db.Pool() == nil {
 		return 0, domain.ErrDatabaseUnavailable
 	}
 
@@ -272,7 +304,7 @@ func (r *PgxUserRepository) CountAdmins(ctx context.Context) (int, error) {
 	defer cancel()
 
 	var count int
-	err := pool.QueryRow(timeoutCtx, "SELECT COUNT(*) FROM users WHERE role = 'admin';").Scan(&count)
+	err := r.db.Pool().QueryRow(timeoutCtx, "SELECT COUNT(*) FROM users WHERE role = 'admin';").Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count admin users: %w", err)
 	}

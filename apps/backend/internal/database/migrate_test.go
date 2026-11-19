@@ -46,4 +46,3 @@ func TestMigrations_EmbeddedDiscovery(t *testing.T) {
 		t.Errorf("expected idx_corporate_treasuries_owner_id index creation, got: %s", contentStr)
 	}
 }
-

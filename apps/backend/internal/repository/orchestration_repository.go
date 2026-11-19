@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/atharvix/quanta/apps/backend/internal/database"
 	"github.com/atharvix/quanta/apps/backend/internal/domain"
@@ -29,10 +30,12 @@ func NewPgxOrchestrationRepository(db *database.DB) *PgxOrchestrationRepository 
 
 // Create inserts an orchestration run record.
 func (r *PgxOrchestrationRepository) Create(ctx context.Context, run domain.OrchestrationRun) (*domain.OrchestrationRun, error) {
-	pool := r.db.Pool()
-	if pool == nil {
+	if r.db == nil || r.db.Pool() == nil {
 		return nil, domain.ErrDatabaseUnavailable
 	}
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
 	query := `
 		INSERT INTO orchestration_runs (
@@ -49,8 +52,8 @@ func (r *PgxOrchestrationRepository) Create(ctx context.Context, run domain.Orch
 	`
 
 	var saved domain.OrchestrationRun
-	err := pool.QueryRow(
-		ctx,
+	err := r.db.Pool().QueryRow(
+		timeoutCtx,
 		query,
 		run.TreasuryID,
 		run.Status,
@@ -81,10 +84,12 @@ func (r *PgxOrchestrationRepository) Create(ctx context.Context, run domain.Orch
 
 // GetByID retrieves an orchestration run by UUID.
 func (r *PgxOrchestrationRepository) GetByID(ctx context.Context, id string) (*domain.OrchestrationRun, error) {
-	pool := r.db.Pool()
-	if pool == nil {
+	if r.db == nil || r.db.Pool() == nil {
 		return nil, domain.ErrDatabaseUnavailable
 	}
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
 	query := `
 		SELECT id, treasury_id, status, ai_status, optimization_status, strategy_log_id, response_json, error_message, duration_ms, created_at
@@ -93,7 +98,7 @@ func (r *PgxOrchestrationRepository) GetByID(ctx context.Context, id string) (*d
 	`
 
 	var run domain.OrchestrationRun
-	err := pool.QueryRow(ctx, query, id).Scan(
+	err := r.db.Pool().QueryRow(timeoutCtx, query, id).Scan(
 		&run.ID,
 		&run.TreasuryID,
 		&run.Status,

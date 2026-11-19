@@ -28,13 +28,38 @@ type HTTPAIClient struct {
 	client  *http.Client
 }
 
+const maxResponseBodyBytes = 10 * 1024 * 1024 // 10MB limit on upstream HTTP responses
+
+// readBoundedResponseBody reads from an io.Reader up to maxBytes + 1, explicitly detecting
+// if the upstream response exceeds maxBytes without buffering unlimited data in memory.
+func readBoundedResponseBody(r io.Reader, maxBytes int64) ([]byte, error) {
+	bytes, err := io.ReadAll(io.LimitReader(r, maxBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+	if int64(len(bytes)) > maxBytes {
+		return nil, fmt.Errorf("%w: upstream response exceeded maximum allowed size of %d bytes", domain.ErrUpstreamUnavailable, maxBytes)
+	}
+	return bytes, nil
+}
+
 // NewHTTPAIClient constructs an HTTP client pointing to the AI Engine with a 60s timeout for complex search comparisons.
 func NewHTTPAIClient(baseURL string) *HTTPAIClient {
+	return NewHTTPAIClientWithClient(baseURL, &http.Client{
+		Timeout: 60 * time.Second,
+	})
+}
+
+// NewHTTPAIClientWithClient constructs an HTTPAIClient with a custom *http.Client (useful for custom transports and testing).
+func NewHTTPAIClientWithClient(baseURL string, client *http.Client) *HTTPAIClient {
+	if client == nil {
+		client = &http.Client{
+			Timeout: 60 * time.Second,
+		}
+	}
 	return &HTTPAIClient{
 		baseURL: baseURL,
-		client: &http.Client{
-			Timeout: 60 * time.Second,
-		},
+		client:  client,
 	}
 }
 
@@ -145,7 +170,7 @@ func (c *HTTPAIClient) GenerateStrategy(ctx context.Context, problem any, algori
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err := io.ReadAll(resp.Body)
+	bodyBytes, err := readBoundedResponseBody(resp.Body, maxResponseBodyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
@@ -195,13 +220,13 @@ func (c *HTTPAIClient) CompareSearches(ctx context.Context, problem any) (json.R
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err := io.ReadAll(resp.Body)
+	bodyBytes, err := readBoundedResponseBody(resp.Body, maxResponseBodyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read search compare response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: status %d (%s)", domain.ErrUpstreamUnavailable, resp.StatusCode, string(bodyBytes))
+		return nil, fmt.Errorf("%w: status %d", domain.ErrUpstreamUnavailable, resp.StatusCode)
 	}
 
 	return json.RawMessage(bodyBytes), nil
@@ -226,7 +251,7 @@ func (c *HTTPAIClient) AnalyzeRisk(ctx context.Context, req domain.AIRiskAnalyze
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err := io.ReadAll(resp.Body)
+	bodyBytes, err := readBoundedResponseBody(resp.Body, maxResponseBodyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
@@ -276,7 +301,7 @@ func (c *HTTPAIClient) AdversarialStressTest(ctx context.Context, problem any) (
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err := io.ReadAll(resp.Body)
+	bodyBytes, err := readBoundedResponseBody(resp.Body, maxResponseBodyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}

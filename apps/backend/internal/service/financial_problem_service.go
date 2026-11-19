@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/atharvix/quanta/apps/backend/internal/clients"
@@ -50,6 +51,11 @@ func (s *FinancialProblemService) Create(
 	// 2. Verify treasury exists
 	treasury, err := s.treasuryRepo.GetByID(ctx, input.TreasuryID)
 	if err != nil {
+		return nil, err
+	}
+
+	// 2.1 Enforce resource-level authorization
+	if err := domain.CheckTreasuryAccess(ctx, treasury); err != nil {
 		return nil, err
 	}
 
@@ -152,15 +158,32 @@ func (s *FinancialProblemService) Create(
 	}, nil
 }
 
-// GetByID retrieves a financial problem by ID.
+// GetByID retrieves a financial problem by ID after checking parent treasury authorization.
 func (s *FinancialProblemService) GetByID(ctx context.Context, id string) (*domain.FinancialProblemEntity, error) {
 	if !uuidRegex.MatchString(id) {
 		return nil, domain.ErrInvalidID
 	}
-	return s.fpRepo.GetByID(ctx, id)
+	fp, err := s.fpRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if s.treasuryRepo != nil && fp.TreasuryID != "" {
+		treasury, err := s.treasuryRepo.GetByID(ctx, fp.TreasuryID)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := domain.CheckTreasuryAccess(ctx, treasury); err != nil {
+			return nil, err
+		}
+	}
+
+	return fp, nil
 }
 
 // List retrieves financial problems with pagination and optional treasury filter.
+// Non-admin callers must specify a treasury_id and have authorization to access it.
 func (s *FinancialProblemService) List(ctx context.Context, limit, offset int, treasuryID string) ([]domain.FinancialProblemEntity, error) {
 	if limit <= 0 {
 		limit = 20
@@ -171,8 +194,23 @@ func (s *FinancialProblemService) List(ctx context.Context, limit, offset int, t
 	if offset < 0 {
 		return nil, fmt.Errorf("%w: offset must be non-negative", domain.ErrInvalidPagination)
 	}
-	if treasuryID != "" && !uuidRegex.MatchString(treasuryID) {
-		return nil, domain.ErrInvalidID
+
+	callerRole := domain.RoleFromContext(ctx)
+	if strings.TrimSpace(treasuryID) != "" {
+		if !uuidRegex.MatchString(treasuryID) {
+			return nil, domain.ErrInvalidID
+		}
+		if s.treasuryRepo != nil {
+			treasury, err := s.treasuryRepo.GetByID(ctx, treasuryID)
+			if err != nil {
+				return nil, err
+			}
+			if err := domain.CheckTreasuryAccess(ctx, treasury); err != nil {
+				return nil, err
+			}
+		}
+	} else if callerRole != domain.RoleAdmin && callerRole != "" {
+		return nil, fmt.Errorf("%w: treasury_id query parameter is required for non-admin users", domain.ErrForbidden)
 	}
 
 	return s.fpRepo.List(ctx, limit, offset, treasuryID)

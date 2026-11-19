@@ -157,3 +157,64 @@ func TestHealthHandler_DatabaseHealth_AllUp(t *testing.T) {
 		t.Errorf("unexpected health status payload: %+v", res)
 	}
 }
+
+type MockOptimizationChecker struct {
+	err error
+}
+
+func (m *MockOptimizationChecker) Health(ctx context.Context) error {
+	return m.err
+}
+
+func (m *MockOptimizationChecker) OptimizeClassical(ctx context.Context, req clients.OptimizationRequest) (*clients.OptimizationResult, error) {
+	return nil, nil
+}
+
+func (m *MockOptimizationChecker) OptimizeQuantum(ctx context.Context, req clients.OptimizationRequest) (*clients.OptimizationResult, error) {
+	return nil, nil
+}
+
+func (m *MockOptimizationChecker) CompareOptimizers(ctx context.Context, req clients.OptimizationCompareRequest) (*clients.OptimizationCompareResponse, error) {
+	return nil, nil
+}
+
+func TestHealthHandler_DatabaseHealth_WithOptimizationEngine(t *testing.T) {
+	dbMock := &MockPinger{err: nil}
+	aiMock := &MockAIHealthChecker{err: nil}
+	optMock := &MockOptimizationChecker{err: nil}
+	h := NewHealthHandler(dbMock, aiMock, optMock)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+	rr := httptest.NewRecorder()
+
+	h.DatabaseHealth(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var res struct {
+		Status       string            `json:"status"`
+		Database     string            `json:"database"`
+		Dependencies map[string]string `json:"dependencies"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&res); err != nil {
+		t.Fatalf("failed to decode body: %v", err)
+	}
+
+	if res.Dependencies["optimization_engine"] != "up" {
+		t.Errorf("expected optimization_engine 'up', got '%s'", res.Dependencies["optimization_engine"])
+	}
+
+	// Now simulate optimization engine down
+	optMock.err = errors.New("opt engine down")
+	rr2 := httptest.NewRecorder()
+	h.DatabaseHealth(rr2, req)
+	var res2 struct {
+		Dependencies map[string]string `json:"dependencies"`
+	}
+	_ = json.NewDecoder(rr2.Body).Decode(&res2)
+	if res2.Dependencies["optimization_engine"] != "down" {
+		t.Errorf("expected optimization_engine 'down', got '%s'", res2.Dependencies["optimization_engine"])
+	}
+}

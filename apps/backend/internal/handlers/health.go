@@ -9,15 +9,22 @@ import (
 
 // HealthHandler manages system diagnostics and dependency health checks.
 type HealthHandler struct {
-	pinger   database.Pinger
-	aiClient clients.AIClient
+	pinger    database.Pinger
+	aiClient  clients.AIClient
+	optClient clients.OptimizationClient
 }
 
-// NewHealthHandler constructs a HealthHandler with database and AI engine checkers.
-func NewHealthHandler(pinger database.Pinger, aiClient clients.AIClient) *HealthHandler {
+// NewHealthHandler constructs a HealthHandler with database and AI engine checkers,
+// with optional support for Member 2's Optimization Engine.
+func NewHealthHandler(pinger database.Pinger, aiClient clients.AIClient, optClient ...clients.OptimizationClient) *HealthHandler {
+	var oc clients.OptimizationClient
+	if len(optClient) > 0 {
+		oc = optClient[0]
+	}
 	return &HealthHandler{
-		pinger:   pinger,
-		aiClient: aiClient,
+		pinger:    pinger,
+		aiClient:  aiClient,
+		optClient: oc,
 	}
 }
 
@@ -51,11 +58,20 @@ func (h *HealthHandler) DatabaseHealth(w http.ResponseWriter, r *http.Request) {
 		aiStatus = "down"
 	}
 
+	deps := map[string]string{
+		"ai_engine": aiStatus,
+	}
+	if h.optClient != nil {
+		optStatus := "up"
+		if h.optClient.Health(r.Context()) != nil {
+			optStatus = "down"
+		}
+		deps["optimization_engine"] = optStatus
+	}
+
 	WriteJSON(w, http.StatusOK, map[string]any{
-		"status":   "ok",
-		"database": "up",
-		"dependencies": map[string]string{
-			"ai_engine": aiStatus,
-		},
+		"status":       "ok",
+		"database":     "up",
+		"dependencies": deps,
 	})
 }

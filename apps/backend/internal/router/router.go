@@ -33,6 +33,9 @@ func NewRouter(
 		r.Use(appmw.CORS(cfg.CORSAllowedOrigins))
 	}
 
+	// 0.1 Enterprise security response headers
+	r.Use(appmw.SecurityHeaders())
+
 	// 1. Injects a unique X-Request-ID into each request for end-to-end tracing
 	r.Use(chimw.RequestID)
 

@@ -110,6 +110,77 @@ func TestTreasuryService_GetByID(t *testing.T) {
 			t.Errorf("expected ID '%s', got '%s'", validUUID, tRecord.ID)
 		}
 	})
+
+	t.Run("Owner access to owned treasury succeeds", func(t *testing.T) {
+		ownerID := "user-owner-123"
+		validUUID := "123e4567-e89b-12d3-a456-426614174000"
+		mock := &MockTreasuryRepository{
+			getByIDFn: func(ctx context.Context, id string) (*domain.Treasury, error) {
+				return &domain.Treasury{
+					ID:        id,
+					Name:      "Owned Corp",
+					OwnerID:   &ownerID,
+					CreatedAt: time.Now(),
+				}, nil
+			},
+		}
+		s := NewTreasuryService(mock)
+		authCtx := domain.WithUserContext(context.Background(), ownerID, "owner@example.com", domain.RoleAnalyst)
+		tRecord, err := s.GetByID(authCtx, validUUID)
+		if err != nil {
+			t.Fatalf("unexpected error for owner: %v", err)
+		}
+		if tRecord.ID != validUUID {
+			t.Errorf("expected ID '%s', got '%s'", validUUID, tRecord.ID)
+		}
+	})
+
+	t.Run("Non-owner analyst access to owned treasury returns ErrForbidden", func(t *testing.T) {
+		ownerID := "user-owner-123"
+		otherAnalystID := "user-analyst-456"
+		validUUID := "123e4567-e89b-12d3-a456-426614174000"
+		mock := &MockTreasuryRepository{
+			getByIDFn: func(ctx context.Context, id string) (*domain.Treasury, error) {
+				return &domain.Treasury{
+					ID:        id,
+					Name:      "Owned Corp",
+					OwnerID:   &ownerID,
+					CreatedAt: time.Now(),
+				}, nil
+			},
+		}
+		s := NewTreasuryService(mock)
+		authCtx := domain.WithUserContext(context.Background(), otherAnalystID, "other@example.com", domain.RoleAnalyst)
+		_, err := s.GetByID(authCtx, validUUID)
+		if !errors.Is(err, domain.ErrForbidden) {
+			t.Fatalf("expected ErrForbidden for non-owner, got: %v", err)
+		}
+	})
+
+	t.Run("Admin access to another user's treasury succeeds", func(t *testing.T) {
+		ownerID := "user-owner-123"
+		adminID := "user-admin-999"
+		validUUID := "123e4567-e89b-12d3-a456-426614174000"
+		mock := &MockTreasuryRepository{
+			getByIDFn: func(ctx context.Context, id string) (*domain.Treasury, error) {
+				return &domain.Treasury{
+					ID:        id,
+					Name:      "Owned Corp",
+					OwnerID:   &ownerID,
+					CreatedAt: time.Now(),
+				}, nil
+			},
+		}
+		s := NewTreasuryService(mock)
+		adminCtx := domain.WithUserContext(context.Background(), adminID, "admin@example.com", domain.RoleAdmin)
+		tRecord, err := s.GetByID(adminCtx, validUUID)
+		if err != nil {
+			t.Fatalf("unexpected error for admin: %v", err)
+		}
+		if tRecord.ID != validUUID {
+			t.Errorf("expected ID '%s', got '%s'", validUUID, tRecord.ID)
+		}
+	})
 }
 
 func TestTreasuryService_Create(t *testing.T) {

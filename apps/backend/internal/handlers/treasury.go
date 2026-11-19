@@ -88,6 +88,10 @@ func (h *TreasuryHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 			WriteError(w, http.StatusNotFound, "treasury not found")
 			return
 		}
+		if errors.Is(err, domain.ErrForbidden) {
+			WriteError(w, http.StatusForbidden, "forbidden: insufficient permissions for this treasury")
+			return
+		}
 		if errors.Is(err, domain.ErrDatabaseUnavailable) {
 			WriteError(w, http.StatusServiceUnavailable, "database unavailable")
 			return

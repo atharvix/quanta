@@ -54,6 +54,11 @@ func (s *OrchestrationService) Orchestrate(
 		return nil, err
 	}
 
+	// 2.1 Enforce resource-level authorization
+	if err := domain.CheckTreasuryAccess(ctx, treasury); err != nil {
+		return nil, err
+	}
+
 	// 3. Validate algorithm
 	if input.Algorithm == "" {
 		input.Algorithm = "astar"
@@ -200,10 +205,26 @@ func (s *OrchestrationService) Orchestrate(
 	return &response, nil
 }
 
-// GetRunByID retrieves an orchestration run record by UUID.
+// GetRunByID retrieves an orchestration run record by UUID after checking parent treasury authorization.
 func (s *OrchestrationService) GetRunByID(ctx context.Context, id string) (*domain.OrchestrationRun, error) {
 	if !uuidRegex.MatchString(id) {
 		return nil, domain.ErrInvalidID
 	}
-	return s.orchRepo.GetByID(ctx, id)
+	run, err := s.orchRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if s.treasuryRepo != nil && run.TreasuryID != "" {
+		treasury, err := s.treasuryRepo.GetByID(ctx, run.TreasuryID)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := domain.CheckTreasuryAccess(ctx, treasury); err != nil {
+			return nil, err
+		}
+	}
+
+	return run, nil
 }

@@ -63,6 +63,11 @@ func (s *StrategyService) GenerateStrategy(
 		return nil, err
 	}
 
+	// 3.1 Enforce resource-level authorization
+	if err := domain.CheckTreasuryAccess(ctx, treasury); err != nil {
+		return nil, err
+	}
+
 	// 4. Calculate and validate step_size:
 	// If omitted or not provided in the request, default step_size = capital / 20.
 	// This bounds the discrete search tree depth to ~20 steps, preventing state space explosion in search solvers.
@@ -161,15 +166,31 @@ func (s *StrategyService) GenerateStrategy(
 	}, nil
 }
 
-// GetStrategyByID fetches an individual strategy execution log by UUID.
+// GetStrategyByID fetches an individual strategy execution log by UUID after verifying parent treasury authorization.
 func (s *StrategyService) GetStrategyByID(ctx context.Context, id string) (*domain.StrategyExecutionLog, error) {
 	if !uuidRegex.MatchString(id) {
 		return nil, domain.ErrInvalidID
 	}
-	return s.strategyRepo.GetLogByID(ctx, id)
+	logRecord, err := s.strategyRepo.GetLogByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if s.treasuryRepo != nil && logRecord.TreasuryID != "" {
+		treasury, err := s.treasuryRepo.GetByID(ctx, logRecord.TreasuryID)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := domain.CheckTreasuryAccess(ctx, treasury); err != nil {
+			return nil, err
+		}
+	}
+
+	return logRecord, nil
 }
 
-// ListStrategiesByTreasuryID queries execution logs for a corporate treasury.
+// ListStrategiesByTreasuryID queries execution logs for a corporate treasury after verifying authorization.
 func (s *StrategyService) ListStrategiesByTreasuryID(ctx context.Context, treasuryID string, limit, offset int) ([]domain.StrategyExecutionLog, error) {
 	if !uuidRegex.MatchString(treasuryID) {
 		return nil, domain.ErrInvalidID
@@ -182,6 +203,17 @@ func (s *StrategyService) ListStrategiesByTreasuryID(ctx context.Context, treasu
 	}
 	if offset < 0 {
 		return nil, fmt.Errorf("%w: offset must be non-negative", domain.ErrInvalidPagination)
+	}
+
+	if s.treasuryRepo != nil {
+		treasury, err := s.treasuryRepo.GetByID(ctx, treasuryID)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := domain.CheckTreasuryAccess(ctx, treasury); err != nil {
+			return nil, err
+		}
 	}
 
 	return s.strategyRepo.ListLogsByTreasuryID(ctx, treasuryID, limit, offset)

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/atharvix/quanta/apps/backend/internal/database"
 	"github.com/atharvix/quanta/apps/backend/internal/domain"
@@ -31,10 +32,12 @@ func NewPgxFinancialProblemRepository(db *database.DB) *PgxFinancialProblemRepos
 
 // Create inserts a financial problem record with linked strategy_log_id.
 func (r *PgxFinancialProblemRepository) Create(ctx context.Context, fp domain.FinancialProblemEntity) (*domain.FinancialProblemEntity, error) {
-	pool := r.db.Pool()
-	if pool == nil {
+	if r.db == nil || r.db.Pool() == nil {
 		return nil, domain.ErrDatabaseUnavailable
 	}
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
 	query := `
 		INSERT INTO financial_problems (
@@ -49,8 +52,8 @@ func (r *PgxFinancialProblemRepository) Create(ctx context.Context, fp domain.Fi
 	`
 
 	var saved domain.FinancialProblemEntity
-	err := pool.QueryRow(
-		ctx,
+	err := r.db.Pool().QueryRow(
+		timeoutCtx,
 		query,
 		fp.TreasuryID,
 		fp.Algorithm,
@@ -77,10 +80,12 @@ func (r *PgxFinancialProblemRepository) Create(ctx context.Context, fp domain.Fi
 
 // GetByID retrieves a financial problem by UUID.
 func (r *PgxFinancialProblemRepository) GetByID(ctx context.Context, id string) (*domain.FinancialProblemEntity, error) {
-	pool := r.db.Pool()
-	if pool == nil {
+	if r.db == nil || r.db.Pool() == nil {
 		return nil, domain.ErrDatabaseUnavailable
 	}
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
 	query := `
 		SELECT id, treasury_id, algorithm, objective, market_state, problem_json, strategy_log_id, created_at
@@ -89,7 +94,7 @@ func (r *PgxFinancialProblemRepository) GetByID(ctx context.Context, id string) 
 	`
 
 	var fp domain.FinancialProblemEntity
-	err := pool.QueryRow(ctx, query, id).Scan(
+	err := r.db.Pool().QueryRow(timeoutCtx, query, id).Scan(
 		&fp.ID,
 		&fp.TreasuryID,
 		&fp.Algorithm,
@@ -111,10 +116,12 @@ func (r *PgxFinancialProblemRepository) GetByID(ctx context.Context, id string) 
 
 // List retrieves a paginated list of financial problems with optional treasury_id filter.
 func (r *PgxFinancialProblemRepository) List(ctx context.Context, limit, offset int, treasuryID string) ([]domain.FinancialProblemEntity, error) {
-	pool := r.db.Pool()
-	if pool == nil {
+	if r.db == nil || r.db.Pool() == nil {
 		return nil, domain.ErrDatabaseUnavailable
 	}
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
 	var sb strings.Builder
 	sb.WriteString(`
@@ -135,7 +142,7 @@ func (r *PgxFinancialProblemRepository) List(ctx context.Context, limit, offset 
 	sb.WriteString(fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d OFFSET $%d;", argIdx, argIdx+1))
 	args = append(args, limit, offset)
 
-	rows, err := pool.Query(ctx, sb.String(), args...)
+	rows, err := r.db.Pool().Query(timeoutCtx, sb.String(), args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query financial problems: %w", err)
 	}

@@ -367,3 +367,95 @@ func TestStrategyService_GenerateStrategy(t *testing.T) {
 		}
 	})
 }
+
+func TestStrategyService_Authorization_ReadPaths(t *testing.T) {
+	ownerID := "user-owner-123"
+	nonOwnerID := "user-analyst-456"
+	adminID := "user-admin-789"
+	validTreasuryID := "123e4567-e89b-12d3-a456-426614174000"
+	validLogID := "223e4567-e89b-12d3-a456-426614174000"
+
+	treasuryRepo := &MockTreasuryRepository{
+		getByIDFn: func(ctx context.Context, id string) (*domain.Treasury, error) {
+			return &domain.Treasury{
+				ID:        validTreasuryID,
+				Name:      "Owned Corp",
+				OwnerID:   &ownerID,
+				CreatedAt: time.Now(),
+			}, nil
+		},
+	}
+	stratRepo := &MockStrategyRepository{
+		getLogByIDFn: func(ctx context.Context, id string) (*domain.StrategyExecutionLog, error) {
+			return &domain.StrategyExecutionLog{
+				ID:         id,
+				TreasuryID: validTreasuryID,
+			}, nil
+		},
+		listLogsByTreasuryIDFn: func(ctx context.Context, treasuryID string, limit, offset int) ([]domain.StrategyExecutionLog, error) {
+			return []domain.StrategyExecutionLog{
+				{ID: validLogID, TreasuryID: treasuryID},
+			}, nil
+		},
+	}
+
+	s := NewStrategyService(treasuryRepo, stratRepo, nil)
+
+	ownerCtx := domain.WithUserContext(context.Background(), ownerID, "owner@example.com", domain.RoleAnalyst)
+	nonOwnerCtx := domain.WithUserContext(context.Background(), nonOwnerID, "other@example.com", domain.RoleAnalyst)
+	adminCtx := domain.WithUserContext(context.Background(), adminID, "admin@example.com", domain.RoleAdmin)
+
+	t.Run("ListStrategiesByTreasuryID - Owner access succeeds", func(t *testing.T) {
+		logs, err := s.ListStrategiesByTreasuryID(ownerCtx, validTreasuryID, 10, 0)
+		if err != nil {
+			t.Fatalf("unexpected error for owner: %v", err)
+		}
+		if len(logs) != 1 {
+			t.Errorf("expected 1 log, got %d", len(logs))
+		}
+	})
+
+	t.Run("ListStrategiesByTreasuryID - Non-owner analyst returns ErrForbidden", func(t *testing.T) {
+		_, err := s.ListStrategiesByTreasuryID(nonOwnerCtx, validTreasuryID, 10, 0)
+		if !errors.Is(err, domain.ErrForbidden) {
+			t.Fatalf("expected ErrForbidden for non-owner, got: %v", err)
+		}
+	})
+
+	t.Run("ListStrategiesByTreasuryID - Admin access succeeds", func(t *testing.T) {
+		logs, err := s.ListStrategiesByTreasuryID(adminCtx, validTreasuryID, 10, 0)
+		if err != nil {
+			t.Fatalf("unexpected error for admin: %v", err)
+		}
+		if len(logs) != 1 {
+			t.Errorf("expected 1 log, got %d", len(logs))
+		}
+	})
+
+	t.Run("GetStrategyByID - Owner access succeeds", func(t *testing.T) {
+		logRecord, err := s.GetStrategyByID(ownerCtx, validLogID)
+		if err != nil {
+			t.Fatalf("unexpected error for owner: %v", err)
+		}
+		if logRecord.ID != validLogID {
+			t.Errorf("expected ID '%s', got '%s'", validLogID, logRecord.ID)
+		}
+	})
+
+	t.Run("GetStrategyByID - Non-owner analyst returns ErrForbidden", func(t *testing.T) {
+		_, err := s.GetStrategyByID(nonOwnerCtx, validLogID)
+		if !errors.Is(err, domain.ErrForbidden) {
+			t.Fatalf("expected ErrForbidden for non-owner, got: %v", err)
+		}
+	})
+
+	t.Run("GetStrategyByID - Admin access succeeds", func(t *testing.T) {
+		logRecord, err := s.GetStrategyByID(adminCtx, validLogID)
+		if err != nil {
+			t.Fatalf("unexpected error for admin: %v", err)
+		}
+		if logRecord.ID != validLogID {
+			t.Errorf("expected ID '%s', got '%s'", validLogID, logRecord.ID)
+		}
+	})
+}

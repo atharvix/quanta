@@ -41,7 +41,7 @@ func ValidateEmail(email string) bool {
 	return emailRegex.MatchString(email)
 }
 
-// ValidatePassword checks password requirements (minimum 8 characters).
+// ValidatePassword checks password requirements (minimum 8 characters, maximum 72 bytes due to bcrypt limitation).
 func ValidatePassword(password string) bool {
-	return len(password) >= 8
+	return len(password) >= 8 && len(password) <= 72
 }
