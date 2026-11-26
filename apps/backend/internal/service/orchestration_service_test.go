@@ -29,6 +29,41 @@ func (m *MockOrchestrationRepository) GetByID(ctx context.Context, id string) (*
 	return nil, nil
 }
 
+type MockOptimizationClient struct {
+	healthFn            func(ctx context.Context) error
+	optimizeClassicalFn func(ctx context.Context, req clients.OptimizationRequest) (*clients.OptimizationResult, error)
+	optimizeQuantumFn   func(ctx context.Context, req clients.OptimizationRequest) (*clients.OptimizationResult, error)
+	compareOptimizersFn func(ctx context.Context, req clients.OptimizationCompareRequest) (*clients.OptimizationCompareResponse, error)
+}
+
+func (m *MockOptimizationClient) Health(ctx context.Context) error {
+	if m.healthFn != nil {
+		return m.healthFn(ctx)
+	}
+	return nil
+}
+
+func (m *MockOptimizationClient) OptimizeClassical(ctx context.Context, req clients.OptimizationRequest) (*clients.OptimizationResult, error) {
+	if m.optimizeClassicalFn != nil {
+		return m.optimizeClassicalFn(ctx, req)
+	}
+	return nil, nil
+}
+
+func (m *MockOptimizationClient) OptimizeQuantum(ctx context.Context, req clients.OptimizationRequest) (*clients.OptimizationResult, error) {
+	if m.optimizeQuantumFn != nil {
+		return m.optimizeQuantumFn(ctx, req)
+	}
+	return nil, nil
+}
+
+func (m *MockOptimizationClient) CompareOptimizers(ctx context.Context, req clients.OptimizationCompareRequest) (*clients.OptimizationCompareResponse, error) {
+	if m.compareOptimizersFn != nil {
+		return m.compareOptimizersFn(ctx, req)
+	}
+	return nil, nil
+}
+
 func TestOrchestrationService_Orchestrate(t *testing.T) {
 	ctx := context.Background()
 	validTreasuryID := "123e4567-e89b-12d3-a456-426614174000"
@@ -76,7 +111,7 @@ func TestOrchestrationService_Orchestrate(t *testing.T) {
 			},
 		}
 
-		svc := NewOrchestrationService(tRepo, orchRepo, nil, aiClient, nil)
+		svc := NewOrchestrationService(tRepo, orchRepo, nil, aiClient, nil, nil)
 		_, err := svc.Orchestrate(ctx, sampleInput)
 		if !errors.Is(err, domain.ErrUpstreamUnavailable) {
 			t.Fatalf("expected ErrUpstreamUnavailable, got %v", err)
@@ -92,7 +127,7 @@ func TestOrchestrationService_Orchestrate(t *testing.T) {
 		}
 	})
 
-	t.Run("Success with comparison and optimization not_available", func(t *testing.T) {
+	t.Run("Success with comparison and healthy optimization engine", func(t *testing.T) {
 		tRepo := &MockTreasuryRepository{
 			getByIDFn: func(ctx context.Context, id string) (*domain.Treasury, error) {
 				return &domain.Treasury{ID: id, TotalCapital: 100.0, RiskTolerance: 0.5, MinLiquidityRatio: 0.2}, nil
@@ -108,21 +143,36 @@ func TestOrchestrationService_Orchestrate(t *testing.T) {
 				}, nil
 			},
 		}
+		approx := 0.94
+		optClient := &MockOptimizationClient{
+			compareOptimizersFn: func(ctx context.Context, req clients.OptimizationCompareRequest) (*clients.OptimizationCompareResponse, error) {
+				return &clients.OptimizationCompareResponse{
+					ProblemSummary:         map[string]any{"capital": 100.0, "n_assets": 1},
+					Results:                map[string]clients.OptimizationResult{"exact": {Method: "exact", Status: "optimal", Feasible: true}},
+					SummaryTable:           []map[string]any{{"method": "exact", "objective_value": 0.05}},
+					BestClassicalMethod:    "exact",
+					QAOAApproximationRatio: &approx,
+					SimulationNote:         "Statevector CPU simulation",
+				}, nil
+			},
+		}
 		stratRepo := &MockStrategyRepository{
 			createLogFn: func(ctx context.Context, log domain.StrategyExecutionLog) (*domain.StrategyExecutionLog, error) {
 				log.ID = "strat-orch-1"
 				return &log, nil
 			},
 		}
+		var savedOptStatus string
 		orchRepo := &MockOrchestrationRepository{
 			createFn: func(ctx context.Context, run domain.OrchestrationRun) (*domain.OrchestrationRun, error) {
+				savedOptStatus = run.OptimizationStatus
 				run.ID = "run-success-1"
 				run.CreatedAt = time.Now()
 				return &run, nil
 			},
 		}
 
-		svc := NewOrchestrationService(tRepo, orchRepo, stratRepo, aiClient, nil)
+		svc := NewOrchestrationService(tRepo, orchRepo, stratRepo, aiClient, optClient, nil)
 		input := sampleInput
 		input.IncludeComparison = true
 
@@ -137,8 +187,67 @@ func TestOrchestrationService_Orchestrate(t *testing.T) {
 		if resp.Status != domain.OrchestrationStatusCompleted {
 			t.Errorf("expected status 'completed', got %s", resp.Status)
 		}
-		if resp.Optimization.Status != "not_available" {
-			t.Errorf("expected optimization status 'not_available', got %s", resp.Optimization.Status)
+		if resp.Optimization.Status != "completed" || savedOptStatus != "completed" {
+			t.Errorf("expected optimization status 'completed', got resp=%s, db=%s", resp.Optimization.Status, savedOptStatus)
+		}
+		if resp.Optimization.BestClassicalMethod != "exact" {
+			t.Errorf("expected best_classical_method 'exact', got %s", resp.Optimization.BestClassicalMethod)
+		}
+		if resp.Optimization.QAOAApproximationRatio == nil || *resp.Optimization.QAOAApproximationRatio != 0.94 {
+			t.Errorf("expected qaoa_approximation_ratio 0.94, got %v", resp.Optimization.QAOAApproximationRatio)
+		}
+	})
+
+	t.Run("Degrades gracefully to unavailable when optimization engine fails", func(t *testing.T) {
+		tRepo := &MockTreasuryRepository{
+			getByIDFn: func(ctx context.Context, id string) (*domain.Treasury, error) {
+				return &domain.Treasury{ID: id, TotalCapital: 100.0, RiskTolerance: 0.5, MinLiquidityRatio: 0.2}, nil
+			},
+		}
+		aiClient := &MockAIClient{
+			generateStrategyFn: func(ctx context.Context, problem any, algorithm string) (*clients.AIGenerateResponse, error) {
+				return &clients.AIGenerateResponse{
+					Strategy: clients.AIStrategy{Explanation: "AI allocation complete"},
+					SearchResult: clients.AISearchResult{
+						FinalState: &clients.AIFinalState{Allocations: map[string]float64{"gov_bond": 100.0}},
+					},
+				}, nil
+			},
+		}
+		optClient := &MockOptimizationClient{
+			compareOptimizersFn: func(ctx context.Context, req clients.OptimizationCompareRequest) (*clients.OptimizationCompareResponse, error) {
+				return nil, errors.New("connection refused on port 8001")
+			},
+		}
+		stratRepo := &MockStrategyRepository{
+			createLogFn: func(ctx context.Context, log domain.StrategyExecutionLog) (*domain.StrategyExecutionLog, error) {
+				log.ID = "strat-orch-2"
+				return &log, nil
+			},
+		}
+		var savedOptStatus string
+		orchRepo := &MockOrchestrationRepository{
+			createFn: func(ctx context.Context, run domain.OrchestrationRun) (*domain.OrchestrationRun, error) {
+				savedOptStatus = run.OptimizationStatus
+				run.ID = "run-degraded-1"
+				run.CreatedAt = time.Now()
+				return &run, nil
+			},
+		}
+
+		svc := NewOrchestrationService(tRepo, orchRepo, stratRepo, aiClient, optClient, nil)
+		resp, err := svc.Orchestrate(ctx, sampleInput)
+		if err != nil {
+			t.Fatalf("expected orchestration to succeed gracefully, got: %v", err)
+		}
+		if resp.Status != domain.OrchestrationStatusCompleted {
+			t.Errorf("expected completed overall status, got %s", resp.Status)
+		}
+		if resp.Optimization.Status != "unavailable" || savedOptStatus != "unavailable" {
+			t.Errorf("expected optimization status 'unavailable', got resp=%s, db=%s", resp.Optimization.Status, savedOptStatus)
+		}
+		if resp.Optimization.Reason == "" {
+			t.Errorf("expected non-empty error reason in degraded optimization status")
 		}
 	})
 }
@@ -170,7 +279,7 @@ func TestOrchestrationService_GetRunByID_Authorization(t *testing.T) {
 		},
 	}
 
-	svc := NewOrchestrationService(tRepo, orchRepo, nil, nil, nil)
+	svc := NewOrchestrationService(tRepo, orchRepo, nil, nil, nil, nil)
 
 	ownerCtx := domain.WithUserContext(context.Background(), ownerID, "owner@example.com", domain.RoleAnalyst)
 	nonOwnerCtx := domain.WithUserContext(context.Background(), nonOwnerID, "other@example.com", domain.RoleAnalyst)

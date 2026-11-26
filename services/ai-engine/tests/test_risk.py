@@ -364,3 +364,99 @@ def test_monte_carlo_var_cvar_ordering(asset_catalog):
     assert report.cvar_99 >= report.var_99
     # 3. Worst-case loss must be >= 99% CVaR
     assert report.worst_case_loss_pct >= report.cvar_99
+
+
+def test_scenario_generator_all_six_regimes(asset_catalog):
+    """ScenarioGenerator must return exactly 6 results, one per required regime,
+    each with realistic projected_return, stressed_risk, stressed_liquidity values
+    and correct boolean compliance flags.
+    """
+    from app.risk.sampling import ScenarioGenerator, SUPPORTED_REGIMES
+
+    state = FinancialState(
+        total_capital=100.0,
+        cash=20.0,
+        allocations={"gov_bond": 50.0, "equity": 30.0},
+        reserved_for_debt=0.0,
+    )
+
+    gen = ScenarioGenerator()
+    results = gen.generate(state, asset_catalog)
+
+    # Must produce exactly 6 results
+    assert len(results) == 6, f"Expected 6 results, got {len(results)}"
+
+    result_regimes = {r.regime for r in results}
+    assert result_regimes == set(SUPPORTED_REGIMES), (
+        f"Missing regimes: {set(SUPPORTED_REGIMES) - result_regimes}"
+    )
+
+    for r in results:
+        # projected_return and stressed values must be finite floats
+        assert isinstance(r.projected_return, float), f"[{r.regime}] projected_return not float"
+        assert isinstance(r.stressed_risk, float), f"[{r.regime}] stressed_risk not float"
+        assert isinstance(r.stressed_liquidity, float), f"[{r.regime}] stressed_liquidity not float"
+
+        # Bounds
+        assert 0.0 <= r.stressed_risk <= 1.0, f"[{r.regime}] stressed_risk out of [0,1]: {r.stressed_risk}"
+        assert 0.0 <= r.stressed_liquidity <= 1.0, (
+            f"[{r.regime}] stressed_liquidity out of [0,1]: {r.stressed_liquidity}"
+        )
+
+        # Boolean flags
+        assert isinstance(r.is_solvent, bool), f"[{r.regime}] is_solvent not bool"
+        assert isinstance(r.is_liquid, bool), f"[{r.regime}] is_liquid not bool"
+
+        # Explanation non-empty
+        assert len(r.explanation) > 0, f"[{r.regime}] explanation is empty"
+
+    # Ordering sanity: bullish should have better projected_return and lower risk than market_crash
+    regime_map = {r.regime: r for r in results}
+    assert regime_map["bullish"].projected_return > regime_map["normal"].projected_return > regime_map["market_crash"].projected_return
+    assert regime_map["market_crash"].stressed_risk > regime_map["normal"].stressed_risk > regime_map["bullish"].stressed_risk > 0.0
+
+    # Stress ordering: market_crash stressed_liquidity < bullish stressed_liquidity
+    assert regime_map["market_crash"].stressed_liquidity < regime_map["bullish"].stressed_liquidity, (
+        "market_crash should produce lower stressed_liquidity than bullish"
+    )
+
+    # For a nearly-illiquid portfolio the market_crash liquidity haircut should trigger is_liquid=False.
+    illiquid_catalog = {
+        "locked_equity": Asset(
+            id="locked_equity", name="Locked",
+            asset_type=AssetType.EQUITY,
+            expected_return=0.10, risk=0.10, liquidity=0.05
+        )
+    }
+    illiquid_state = FinancialState(
+        total_capital=100.0,
+        cash=5.0,
+        allocations={"locked_equity": 95.0},
+        reserved_for_debt=0.0,
+    )
+    illiquid_results = gen.generate(illiquid_state, illiquid_catalog)
+    illiquid_map = {r.regime: r for r in illiquid_results}
+    assert not illiquid_map["market_crash"].is_liquid, (
+        "market_crash regime should leave an illiquid portfolio below the liquidity floor"
+    )
+
+    # High debt load should trigger is_solvent=False under market_crash
+    leveraged_state = FinancialState(
+        total_capital=100.0,
+        cash=20.0,
+        allocations={"gov_bond": 50.0, "equity": 30.0},
+        liabilities=[Liability(id="debt_1", name="Large Note", principal=85.0, interest_rate=0.08)],
+        reserved_for_debt=0.0,
+    )
+    lev_map = {r.regime: r for r in gen.generate(leveraged_state, asset_catalog)}
+    assert lev_map["normal"].is_solvent
+    assert not lev_map["market_crash"].is_solvent
+
+    # Single-regime call must work correctly
+    single = gen.generate(state, asset_catalog, regime="recession")
+    assert len(single) == 1
+    assert single[0].regime == "recession"
+
+    # Invalid regime raises ValueError
+    with pytest.raises(ValueError, match="Unknown regime"):
+        gen.generate(state, asset_catalog, regime="zombie_apocalypse")

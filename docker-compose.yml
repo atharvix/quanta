@@ -40,17 +40,12 @@ services:
       retries: 3
       start_period: 5s
 
-  # Optimization Engine (Member 2) is assigned to the "optimization" profile
-  # so the core platform builds and boots cleanly while Member 2's Dockerfile is pending.
-  # Run `docker compose --profile optimization up` once Member 2 integrates their solver.
+  # Optimization Engine (Member 2) — enabled by default on port 8001.
   optimization-engine:
     build:
       context: ./services/optimization-engine
       dockerfile: Dockerfile
     container_name: quanta-optimization-engine
-    profiles:
-      - optional
-      - optimization
     environment:
       - OPTIMIZATION_ENGINE_PORT=8001
       - ENVIRONMENT=${ENVIRONMENT:-development}
@@ -58,6 +53,12 @@ services:
       - "${OPTIMIZATION_ENGINE_PORT:-8001}:8001"
     volumes:
       - ./services/optimization-engine:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   backend:
     build:
@@ -86,6 +87,8 @@ services:
         condition: service_healthy
       ai-engine:
         condition: service_started
+      optimization-engine:
+        condition: service_healthy
 
   frontend:
     build:

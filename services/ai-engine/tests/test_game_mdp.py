@@ -120,3 +120,60 @@ def test_mdp_value_iteration():
     assert report.iterations_to_converge > 0
     assert len(report.optimal_policy) == len(env.all_states)
     assert len(report.state_values) == len(env.all_states)
+
+
+def test_evaluate_payoff_uses_asset_type_not_literal_key():
+    """evaluate_payoff must aggregate shock losses by asset_type, not by literal allocation key.
+
+    Assets are keyed by custom IDs ('bluechip_equity', 'corp_bond_aaa') that do NOT match the
+    old hard-coded lookup keys ('equity', 'corp_bond'). Both equity_drawdown and credit_spread_spike
+    must apply accurately, and missing asset IDs must fall back gracefully without crashing.
+    """
+    assets = [
+        Asset(id="bluechip_equity", name="Bluechip Equity", asset_type=AssetType.EQUITY,
+              expected_return=0.12, risk=0.35, liquidity=0.80),
+        Asset(id="corp_bond_aaa", name="AAA Corp Bond", asset_type=AssetType.CORP_BOND,
+              expected_return=0.06, risk=0.08, liquidity=0.90),
+    ]
+    assets_map = {a.id: a for a in assets}
+
+    stressed_state = FinancialState(
+        total_capital=100.0,
+        cash=10.0,
+        allocations={"bluechip_equity": 50.0, "corp_bond_aaa": 35.0, "unlisted_asset": 5.0},
+        reserved_for_debt=0.0,
+        expected_return=0.084,
+        liquidity_ratio=0.815,
+        risk_score=0.20,
+    )
+
+    equity_only_shock = MarketShockAction(
+        shock_name="Equity Only",
+        equity_drawdown=-0.30,
+        credit_spread_spike=0.0,
+        liquidity_freeze=0.0,
+    )
+    bond_only_shock = MarketShockAction(
+        shock_name="Credit Only",
+        equity_drawdown=0.0,
+        credit_spread_spike=-0.10,
+        liquidity_freeze=0.0,
+    )
+    combined_shock = MarketShockAction(
+        shock_name="Equity Crash + Credit Squeeze",
+        equity_drawdown=-0.30,
+        credit_spread_spike=-0.10,
+        liquidity_freeze=0.15,
+    )
+    zero_shock = MarketShockAction(shock_name="None")
+
+    base_payoff = TreasuryGameState(stressed_state, assets_map, is_max_turn=False, active_shock=zero_shock).evaluate_payoff(0.50)
+    eq_payoff = TreasuryGameState(stressed_state, assets_map, is_max_turn=False, active_shock=equity_only_shock).evaluate_payoff(0.50)
+    bond_payoff = TreasuryGameState(stressed_state, assets_map, is_max_turn=False, active_shock=bond_only_shock).evaluate_payoff(0.50)
+    comb_payoff = TreasuryGameState(stressed_state, assets_map, is_max_turn=False, active_shock=combined_shock).evaluate_payoff(0.50)
+
+    # Exact shock deductions: 50*0.30/100 = 0.15 for equity, 35*0.10/100 = 0.035 for corp bond
+    assert eq_payoff == pytest.approx(base_payoff - 0.15, abs=1e-6)
+    assert bond_payoff == pytest.approx(base_payoff - 0.035, abs=1e-6)
+    assert comb_payoff == pytest.approx(base_payoff - 0.185 - 0.20 * 0.15, abs=1e-6)
+    assert comb_payoff < 0.0

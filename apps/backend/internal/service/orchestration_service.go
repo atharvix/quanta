@@ -18,6 +18,7 @@ type OrchestrationService struct {
 	orchRepo     repository.OrchestrationRepository
 	strategyRepo repository.StrategyRepository
 	aiClient     clients.AIClient
+	optClient    clients.OptimizationClient
 	auditSvc     *AuditService
 }
 
@@ -27,6 +28,7 @@ func NewOrchestrationService(
 	orchRepo repository.OrchestrationRepository,
 	strategyRepo repository.StrategyRepository,
 	aiClient clients.AIClient,
+	optClient clients.OptimizationClient,
 	auditSvc *AuditService,
 ) *OrchestrationService {
 	return &OrchestrationService{
@@ -34,6 +36,7 @@ func NewOrchestrationService(
 		orchRepo:     orchRepo,
 		strategyRepo: strategyRepo,
 		aiClient:     aiClient,
+		optClient:    optClient,
 		auditSvc:     auditSvc,
 	}
 }
@@ -158,10 +161,38 @@ func (s *OrchestrationService) Orchestrate(
 		return nil, fmt.Errorf("failed to persist strategy execution log: %w", err)
 	}
 
-	// 9. Build orchestration response with optimization not_available status
+	// 9. Execute classical vs. quantum comparison via Optimization Engine (graceful degradation on unavailability)
 	optStatus := domain.OptimizationStatusResponse{
-		Status: "not_available",
-		Reason: "optimization engine not yet integrated",
+		Status: "unavailable",
+		Reason: "optimization engine client not configured",
+	}
+	if s.optClient != nil {
+		compResp, optErr := s.optClient.CompareOptimizers(ctx, clients.OptimizationCompareRequest{
+			Problem: problem,
+		})
+		if optErr != nil {
+			log.Printf("[WARN] Upstream optimization engine comparison unavailable (degrading gracefully): %v", optErr)
+			optStatus = domain.OptimizationStatusResponse{
+				Status: "unavailable",
+				Reason: fmt.Sprintf("optimization engine unavailable: %v", optErr),
+			}
+		} else if compResp != nil {
+			resultsBytes, _ := json.Marshal(compResp.Results)
+			reason := "classical vs. quantum optimization comparison completed"
+			if compResp.BestClassicalMethod != "" {
+				reason = fmt.Sprintf("classical vs. quantum optimization comparison completed (best classical: %s)", compResp.BestClassicalMethod)
+			}
+			optStatus = domain.OptimizationStatusResponse{
+				Status:                 "completed",
+				Reason:                 reason,
+				BestClassicalMethod:    compResp.BestClassicalMethod,
+				QAOAApproximationRatio: compResp.QAOAApproximationRatio,
+				SimulationNote:         compResp.SimulationNote,
+				ProblemSummary:         compResp.ProblemSummary,
+				SummaryTable:           compResp.SummaryTable,
+				Results:                resultsBytes,
+			}
+		}
 	}
 
 	response := domain.OrchestrateAllocationResponse{
@@ -181,7 +212,7 @@ func (s *OrchestrationService) Orchestrate(
 		TreasuryID:         treasury.ID,
 		Status:             domain.OrchestrationStatusCompleted,
 		AIStatus:           "completed",
-		OptimizationStatus: "not_available",
+		OptimizationStatus: optStatus.Status,
 		StrategyLogID:      &savedLog.ID,
 		ResponseJSON:       respBytes,
 		DurationMS:         durationMS,
@@ -195,10 +226,11 @@ func (s *OrchestrationService) Orchestrate(
 	// 11. Best-effort audit log
 	if s.auditSvc != nil {
 		s.auditSvc.Record(ctx, domain.ActionOrchestrationCompleted, "orchestration_run", &savedRun.ID, map[string]any{
-			"treasury_id":     treasury.ID,
-			"algorithm":       input.Algorithm,
-			"strategy_log_id": savedLog.ID,
-			"duration_ms":     durationMS,
+			"treasury_id":         treasury.ID,
+			"algorithm":           input.Algorithm,
+			"strategy_log_id":     savedLog.ID,
+			"optimization_status": optStatus.Status,
+			"duration_ms":         durationMS,
 		})
 	}
 

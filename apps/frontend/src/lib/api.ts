@@ -1,4 +1,10 @@
 import { browser } from '$app/env';
+import type {
+  OptimizationRequestPayload,
+  OptimizationCompareRequestPayload,
+  OptimizationResult,
+  OptimizationCompareResponse
+} from './types';
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
@@ -85,4 +91,31 @@ export async function api<T = any>(path: string, options: ApiRequestOptions = {}
   }
 
   return data as T;
+}
+
+export async function runClassicalOptimization(
+  payload: OptimizationRequestPayload
+): Promise<OptimizationResult> {
+  return api<OptimizationResult>('/api/v1/optimization/classical', {
+    method: 'POST',
+    body: payload
+  });
+}
+
+export async function runQuantumOptimization(
+  payload: OptimizationRequestPayload
+): Promise<OptimizationResult> {
+  return api<OptimizationResult>('/api/v1/optimization/quantum', {
+    method: 'POST',
+    body: payload
+  });
+}
+
+export async function compareOptimizations(
+  payload: OptimizationCompareRequestPayload
+): Promise<OptimizationCompareResponse> {
+  return api<OptimizationCompareResponse>('/api/v1/optimization/compare', {
+    method: 'POST',
+    body: payload
+  });
 }

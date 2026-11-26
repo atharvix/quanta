@@ -91,6 +91,19 @@ func (m *mockAIClientForRouter) EvaluateAgents(ctx context.Context, problem any)
 	return &domain.CouncilDeliberationSummary{ConsensusReached: true}, nil
 }
 
+type mockOptClientForRouter struct{}
+
+func (m *mockOptClientForRouter) Health(ctx context.Context) error { return nil }
+func (m *mockOptClientForRouter) OptimizeClassical(ctx context.Context, req clients.OptimizationRequest) (*clients.OptimizationResult, error) {
+	return &clients.OptimizationResult{Method: "exact", Status: "optimal", Feasible: true}, nil
+}
+func (m *mockOptClientForRouter) OptimizeQuantum(ctx context.Context, req clients.OptimizationRequest) (*clients.OptimizationResult, error) {
+	return &clients.OptimizationResult{Method: "qaoa", Status: "feasible", Feasible: true}, nil
+}
+func (m *mockOptClientForRouter) CompareOptimizers(ctx context.Context, req clients.OptimizationCompareRequest) (*clients.OptimizationCompareResponse, error) {
+	return &clients.OptimizationCompareResponse{BestClassicalMethod: "exact"}, nil
+}
+
 func generateTestToken(secret, sub, email string, role domain.Role) string {
 	claims := jwt.MapClaims{
 		"sub":   sub,
@@ -195,6 +208,8 @@ func TestRouter_RBACMatrix(t *testing.T) {
 	authMW := middleware.JWTAuth(authSvc)
 	authHandler := handlers.NewAuthHandler(authSvc)
 
+	optHandler := handlers.NewOptimizationHandler(&mockOptClientForRouter{}, auditSvc)
+
 	r := NewRouter(
 		cfg,
 		nil,
@@ -206,6 +221,7 @@ func TestRouter_RBACMatrix(t *testing.T) {
 		authHandler,
 		riskHandler,
 		authMW,
+		optHandler,
 	)
 
 	viewerToken := generateTestToken(jwtSecret, "v-1", "viewer@quanta.local", domain.RoleViewer)
@@ -254,6 +270,14 @@ func TestRouter_RBACMatrix(t *testing.T) {
 		if rr.Code != http.StatusUnauthorized {
 			t.Errorf("expected 401 for POST /stress-test without token, got %d", rr.Code)
 		}
+
+		// POST optimization/compare without token
+		req = httptest.NewRequest(http.MethodPost, "/api/v1/optimization/compare", bytes.NewBufferString(`{}`))
+		rr = httptest.NewRecorder()
+		r.ServeHTTP(rr, req)
+		if rr.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401 for POST /optimization/compare without token, got %d", rr.Code)
+		}
 	})
 
 	t.Run("Viewer permissions: GET treasuries 200, POST treasuries 403, GET audit-logs 403", func(t *testing.T) {
@@ -300,6 +324,17 @@ func TestRouter_RBACMatrix(t *testing.T) {
 		r.ServeHTTP(rr, req)
 		if rr.Code != http.StatusForbidden {
 			t.Errorf("expected 403 Forbidden for viewer on GET /audit-logs, got %d", rr.Code)
+		}
+
+		// POST optimization endpoints forbidden for viewer (403)
+		for _, optPath := range []string{"/api/v1/optimization/classical", "/api/v1/optimization/quantum", "/api/v1/optimization/compare"} {
+			req = httptest.NewRequest(http.MethodPost, optPath, bytes.NewBufferString(`{}`))
+			req.Header.Set("Authorization", "Bearer "+viewerToken)
+			rr = httptest.NewRecorder()
+			r.ServeHTTP(rr, req)
+			if rr.Code != http.StatusForbidden {
+				t.Errorf("expected 403 Forbidden for viewer on POST %s, got %d", optPath, rr.Code)
+			}
 		}
 	})
 
@@ -349,6 +384,18 @@ func TestRouter_RBACMatrix(t *testing.T) {
 		if rr.Code != http.StatusForbidden {
 			t.Errorf("expected 403 Forbidden for analyst on GET /audit-logs, got %d", rr.Code)
 		}
+
+		// POST optimization endpoints allowed for analyst (200)
+		optPayload := `{"problem":{"capital":100.0,"assets":[{"name":"Gov Bond","expected_return":0.07,"risk":0.05,"liquidity":0.95,"cost":20.0}]}}`
+		for _, optPath := range []string{"/api/v1/optimization/classical", "/api/v1/optimization/quantum", "/api/v1/optimization/compare"} {
+			req = httptest.NewRequest(http.MethodPost, optPath, bytes.NewBufferString(optPayload))
+			req.Header.Set("Authorization", "Bearer "+analystToken)
+			rr = httptest.NewRecorder()
+			r.ServeHTTP(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Errorf("expected 200 OK for analyst on POST %s, got %d: %s", optPath, rr.Code, rr.Body.String())
+			}
+		}
 	})
 
 	t.Run("Admin permissions: GET audit-logs 200, GET users 200, POST treasuries 201", func(t *testing.T) {
@@ -396,6 +443,16 @@ func TestRouter_RBACMatrix(t *testing.T) {
 		r.ServeHTTP(rr, req)
 		if rr.Code == http.StatusUnauthorized || rr.Code == http.StatusForbidden {
 			t.Errorf("expected admin to be authorized for POST /stress-test, got %d", rr.Code)
+		}
+
+		// POST optimization/compare allowed for admin
+		optPayload := `{"problem":{"capital":100.0,"assets":[{"name":"Gov Bond","expected_return":0.07,"risk":0.05,"liquidity":0.95,"cost":20.0}]}}`
+		req = httptest.NewRequest(http.MethodPost, "/api/v1/optimization/compare", bytes.NewBufferString(optPayload))
+		req.Header.Set("Authorization", "Bearer "+adminToken)
+		rr = httptest.NewRecorder()
+		r.ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK for admin on POST /optimization/compare, got %d", rr.Code)
 		}
 	})
 

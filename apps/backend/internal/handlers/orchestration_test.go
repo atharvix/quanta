@@ -92,7 +92,7 @@ func TestOrchestrationHandler_Allocate(t *testing.T) {
 			},
 		}
 
-		svc := service.NewOrchestrationService(tRepo, orchRepo, stratRepo, aiClient, nil)
+		svc := service.NewOrchestrationService(tRepo, orchRepo, stratRepo, aiClient, nil, nil)
 		h := NewOrchestrationHandler(svc)
 		r := setupOrchRouter(h)
 
@@ -122,7 +122,7 @@ func TestOrchestrationHandler_Allocate(t *testing.T) {
 			},
 		}
 
-		svc := service.NewOrchestrationService(tRepo, orchRepo, nil, aiClient, nil)
+		svc := service.NewOrchestrationService(tRepo, orchRepo, nil, aiClient, nil, nil)
 		h := NewOrchestrationHandler(svc)
 		r := setupOrchRouter(h)
 

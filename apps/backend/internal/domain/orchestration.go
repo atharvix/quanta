@@ -38,10 +38,16 @@ type OrchestrateAllocationInput struct {
 	IncludeComparison bool         `json:"include_comparison"`
 }
 
-// OptimizationStatusResponse indicates Member 2's engine status.
+// OptimizationStatusResponse indicates Member 2's engine status and comparison summary.
 type OptimizationStatusResponse struct {
-	Status string `json:"status"`
-	Reason string `json:"reason"`
+	Status                 string           `json:"status"`
+	Reason                 string           `json:"reason"`
+	BestClassicalMethod    string           `json:"best_classical_method,omitempty"`
+	QAOAApproximationRatio *float64         `json:"qaoa_approximation_ratio,omitempty"`
+	SimulationNote         string           `json:"simulation_note,omitempty"`
+	ProblemSummary         map[string]any   `json:"problem_summary,omitempty"`
+	SummaryTable           []map[string]any `json:"summary_table,omitempty"`
+	Results                json.RawMessage  `json:"results,omitempty"`
 }
 
 // OrchestrateAllocationResponse returns unified orchestration outcome.

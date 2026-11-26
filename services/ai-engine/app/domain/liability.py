@@ -17,7 +17,7 @@ class Liability(BaseModel):
     """
     id: str = Field(..., description="Unique liability identifier")
     name: str = Field(..., description="Liability display name")
-    principal: float = Field(..., gt=0.0, description="Principal debt amount")
+    principal: float = Field(..., ge=0.0, description="Principal debt amount")
     interest_rate: float = Field(..., ge=0.0, le=2.0, description="Annualized interest cost")
     maturity_months: int = Field(default=12, ge=1, description="Remaining maturity in months")
     priority: int = Field(default=1, ge=1, description="Seniority rank (1 = Senior, 2 = Mezzanine, etc.)")

@@ -41,7 +41,10 @@ type Config struct {
 func Load() *Config {
 	env := getEnv("APP_ENV", "")
 	if env == "" {
-		env = getEnv("GO_ENV", "development")
+		env = getEnv("GO_ENV", "")
+	}
+	if env == "" {
+		env = getEnv("ENVIRONMENT", "development")
 	}
 
 	ttlStr := getEnv("JWT_TTL", "1h")
@@ -50,7 +53,10 @@ func Load() *Config {
 		jwtTTL = 1 * time.Hour
 	}
 
-	corsOriginsStr := getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
+	corsOriginsStr := getEnv("CORS_ALLOWED_ORIGINS", "")
+	if corsOriginsStr == "" {
+		corsOriginsStr = getEnv("ALLOWED_ORIGINS", "http://localhost:3000")
+	}
 	var corsOrigins []string
 	for _, o := range strings.Split(corsOriginsStr, ",") {
 		trimmed := strings.TrimSpace(o)
@@ -62,9 +68,14 @@ func Load() *Config {
 		corsOrigins = []string{"http://localhost:3000"}
 	}
 
+	port := getEnv("PORT", "")
+	if port == "" {
+		port = getEnv("BACKEND_PORT", "8080")
+	}
+
 	return &Config{
 		Environment:           strings.ToLower(env),
-		Port:                  getEnv("PORT", "8080"),
+		Port:                  port,
 		DatabaseURL:           getEnv("DATABASE_URL", "postgres://quanta_admin:quanta_secure_dev_password@localhost:5432/quanta_db?sslmode=disable"),
 		AIEngineURL:           getEnv("AI_ENGINE_URL", "http://localhost:8000"),
 		OptimizationEngineURL: getEnv("OPTIMIZATION_ENGINE_URL", "http://localhost:8001"),

@@ -242,3 +242,63 @@ def test_adversarial_stress_test_endpoint_missing_fields_validation_error():
     # Missing required 'capital' and 'step_size'
     response = client.post("/api/v1/stress-test/adversarial", json={"assets": []})
     assert response.status_code == 422
+
+
+def test_stress_test_alias_zero_principal_and_scenario_summary():
+    """Verify /api/v1/stress-test alias, zero-principal liability support, and scenario_summary in /risk/analyze."""
+    problem_payload = {
+        "capital": 30.0,
+        "step_size": 10.0,
+        "assets": [
+            {
+                "id": "gov_bond",
+                "name": "Gov Bonds",
+                "asset_type": "gov_bond",
+                "expected_return": 0.07,
+                "risk": 0.05,
+                "liquidity": 0.95
+            },
+            {
+                "id": "bluechip_equity",
+                "name": "Equity",
+                "asset_type": "equity",
+                "expected_return": 0.14,
+                "risk": 0.40,
+                "liquidity": 0.80
+            }
+        ],
+        "liabilities": [
+            {
+                "id": "zero_debt",
+                "name": "Contingent Facility",
+                "principal": 0.0,
+                "interest_rate": 0.05,
+                "is_mandatory_reserve": False
+            }
+        ],
+        "risk_tolerance": 0.40,
+        "minimum_liquidity": 0.20
+    }
+    res_alias = client.post("/api/v1/stress-test", json=problem_payload)
+    assert res_alias.status_code == 200
+    alias_data = res_alias.json()
+    assert "worst_case_payoff" in alias_data
+    assert alias_data["nodes_evaluated"] > 0
+
+    risk_payload = {
+        "state": {
+            "total_capital": 30.0,
+            "cash": 10.0,
+            "allocations": {"gov_bond": 10.0, "bluechip_equity": 10.0},
+            "reserved_for_debt": 0.0
+        },
+        "problem": problem_payload,
+        "run_monte_carlo": False
+    }
+    res_risk = client.post("/api/v1/risk/analyze", json=risk_payload)
+    assert res_risk.status_code == 200
+    risk_data = res_risk.json()
+    assert "scenario_summary" in risk_data
+    assert len(risk_data["scenario_summary"]) == 6
+    regimes = {item["regime"] for item in risk_data["scenario_summary"]}
+    assert regimes == {"normal", "bullish", "bearish", "recession", "market_crash", "liquidity_crisis"}

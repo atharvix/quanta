@@ -25,7 +25,12 @@ func NewRouter(
 	authHandler *handlers.AuthHandler,
 	riskHandler *handlers.RiskHandler,
 	authMiddleware func(http.Handler) http.Handler,
+	optHandlers ...*handlers.OptimizationHandler,
 ) http.Handler {
+	var optHandler *handlers.OptimizationHandler
+	if len(optHandlers) > 0 {
+		optHandler = optHandlers[0]
+	}
 	r := chi.NewRouter()
 
 	// 0. Outermost CORS middleware to process preflights without authentication
@@ -155,6 +160,12 @@ func NewRouter(
 
 				if orchHandler != nil {
 					analyst.Post("/orchestrate/allocation", orchHandler.Allocate)
+				}
+
+				if optHandler != nil {
+					analyst.Post("/optimization/classical", optHandler.SolveClassical)
+					analyst.Post("/optimization/quantum", optHandler.SolveQuantum)
+					analyst.Post("/optimization/compare", optHandler.Compare)
 				}
 			})
 

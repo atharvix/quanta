@@ -74,7 +74,7 @@ func main() {
 	fpHandler := handlers.NewFinancialProblemHandler(fpService)
 
 	orchRepo := repository.NewPgxOrchestrationRepository(db)
-	orchService := service.NewOrchestrationService(treasuryRepo, orchRepo, strategyRepo, aiClient, auditSvc)
+	orchService := service.NewOrchestrationService(treasuryRepo, orchRepo, strategyRepo, aiClient, optClient, auditSvc)
 	orchHandler := handlers.NewOrchestrationHandler(orchService)
 
 	auditHandler := handlers.NewAuditHandler(auditSvc)
@@ -82,6 +82,8 @@ func main() {
 
 	riskService := service.NewRiskService(treasuryRepo, aiClient, auditSvc)
 	riskHandler := handlers.NewRiskHandler(riskService)
+
+	optHandler := handlers.NewOptimizationHandler(optClient, auditSvc)
 
 	userRepo := repository.NewPgxUserRepository(db)
 	authSvc := service.NewAuthService(userRepo, auditSvc, cfg)
@@ -99,6 +101,7 @@ func main() {
 		authHandler,
 		riskHandler,
 		authMiddleware,
+		optHandler,
 	)
 
 	// 6. Configure robust HTTP server with enterprise timeouts

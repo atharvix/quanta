@@ -1,11 +1,13 @@
 # QUANTA — Autonomous Financial Treasury & Capital Optimization Platform
 
 [![Python](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](https://www.python.org/)
+[![Go](https://img.shields.io/badge/Go-1.25%2B-00ADD8.svg)](https://go.dev/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-green.svg)](https://fastapi.tiangolo.com/)
+[![SvelteKit](https://img.shields.io/badge/SvelteKit-Svelte%205-FF3E00.svg)](https://svelte.dev/)
 [![License](https://img.shields.io/badge/License-Academic%20Research-purple.svg)]()
 
-> **Enterprise-Oriented AI Financial Decision Intelligence Platform**  
-> QUANTA evaluates corporate balance sheets, investment opportunities, liabilities, liquidity requirements, and risk constraints to synthesize optimal, deterministic, and explainable capital allocation strategies.
+> **Enterprise-Oriented AI Financial Decision Intelligence & Optimization Platform**
+> QUANTA evaluates corporate balance sheets, investment opportunities, liabilities, liquidity requirements, and risk constraints to synthesize optimal, deterministic, and explainable capital allocation strategies across heuristic AI search, convex mathematical programming, and QUBO/QAOA quantum simulation.
 
 ---
 
@@ -13,105 +15,114 @@
 
 | Member | Role & Module | Responsibilities |
 | :--- | :--- | :--- |
-| **Atharv (Team Lead)** | **AI Decision Engine** | Search Algorithms, CSP, Bayesian Risk Reasoning, Game Theory (Minimax/Alpha-Beta), MDP & RL, Intelligent Agent Coordinator |
-| **Parv** | **Optimization Engine** | Mathematical Programming, QUBO Formulations, QAOA, Quantum Simulation & Classical-vs-Quantum Benchmarking |
-| **Aryan** | **Backend & Platform** | Go REST API, PostgreSQL, Authentication, Audit Logs, SvelteKit Frontend & Cloud/Docker Deployment |
+| **Atharv (Team Lead)** | **AI Decision Engine (`services/ai-engine/`)** | Search Algorithms (BFS, DFS, Best-First, Hill Climbing, A*), CSP, Bayesian Risk Reasoning, Game Theory (Minimax/Alpha-Beta), MDP & Multi-Agent Council |
+| **Parv** | **Optimization Engine (`services/optimization-engine/`)** | Mathematical Programming (Exact, Greedy, SA, SciPy SLSQP, MILP), QUBO Formulations, QAOA Statevector Simulation & Classical-vs-Quantum Benchmarking |
+| **Aryan** | **Backend & Platform (`apps/backend/`, `apps/frontend/`)** | Go REST API Gateway, PostgreSQL, JWT Auth/RBAC, Audit Logs, SvelteKit Dashboard, Optimization Lab & Orchestration |
 
 ---
 
 ## Monorepo Architecture
 
-```
+```text
 quanta/
 ├── apps/
-│   ├── frontend/             # SvelteKit + TypeScript Dashboard (Aryan)
-│   └── backend/              # Go REST API & PostgreSQL Service (Aryan)
+│   ├── frontend/             # SvelteKit 5 + TypeScript Dashboard (Port 3000)
+│   └── backend/              # Go Chi API Gateway & PostgreSQL Migrations (Port 8080)
 ├── services/
-│   ├── ai-engine/            # Python AI Decision Engine (Atharv)
-│   └── optimization-engine/  # Mathematical & Quantum Optimization (Parv)
+│   ├── ai-engine/            # Python FastAPI AI Decision Engine (Port 8000)
+│   └── optimization-engine/  # Python FastAPI Optimization & QAOA Engine (Port 8001)
 ├── shared/
-│   └── schemas/              # Common JSON / OpenAPI Schema Contracts
-├── infrastructure/
-│   ├── docker/               # Dockerfiles & production compose configs
-│   └── postgres/             # Database initialization schemas & migrations
+│   └── schemas/              # Canonical JSON Schema Contracts
+├── scripts/                  # Polyglot Local Lifecycle & Smoke Test Suite
+├── infrastructure/           # PostgreSQL init schema & optional container configs
 ├── docs/                     # Architectural, AI Engine & Integration specs
-├── tests/                    # Integration & end-to-end tests
-└── scripts/                  # Development & utility scripts
+├── quanta.bat                # One-click Windows local launcher
+└── docker-compose.yml        # Optional container orchestration
 ```
 
 ---
 
-## Academic Scope: Classical AI Curriculum Integration
-
-QUANTA implements core principles of Artificial Intelligence directly mapped to treasury optimization:
-
-1. **Problem Formulation & State Spaces (Unit I)**: Immutable `FinancialState` space modeling balance sheet dynamics under discrete capital allocation actions.
-2. **Search Algorithms (Unit II)**:
-   - **Uninformed**: Breadth-First Search (BFS), Depth-First Search (DFS).
-   - **Informed & Heuristic**: Systematic Generate-and-Test, Steepest-Ascent Hill Climbing, Greedy Best-First Search, and $A^*$ Search using an admissible risk-adjusted heuristic $f(n) = g(n) + h(n)$.
-3. **Game Trees & Constraint Satisfaction (Unit III)**:
-   - **Adversarial Search**: Minimax and Alpha-Beta Pruning modeling capital strategies against worst-case macroeconomic shock adversaries.
-   - **Constraint Satisfaction (CSP)**: Backtracking search with Forward Checking and Minimum Remaining Values (MRV) over portfolio limits, liquidity floors, and debt reserves.
-4. **Markov Decision Processes & RL (Unit IV)**: Multi-period treasury rebalancing MDP with state transitions across market regimes (Bull, Bear, Volatile, Stagnant).
-5. **Intelligent Agents & Reasoning (Unit V)**: Multi-agent cooperative architecture (`TreasuryAgent`, `RiskAgent`, `ComplianceAgent`, `DecisionAgent`) and Bayesian risk reasoning.
-
----
-
-## Quickstart
+## Quickstart: Native Local Execution (Primary — No Docker Required)
 
 ### Prerequisites
-- Python 3.12+ (or 3.13)
-- Docker & Docker Compose (optional for full platform)
+- **Python 3.12+** (`services/ai-engine` & `services/optimization-engine`)
+- **Go 1.24+** (`apps/backend`)
+- **Node.js 20+ / npm** (`apps/frontend`)
+- **PostgreSQL 15/16+** running locally on `localhost:5432`
 
-### 1. Run the AI Engine Tests
-```bash
-cd services/ai-engine
-pytest -v
+### 1. Initialize Local Dependencies & Database
+```powershell
+# Python engines
+pip install -r services/ai-engine/requirements.txt
+pip install -r services/optimization-engine/requirements.txt
+
+# SvelteKit frontend
+cd apps/frontend && npm install && cd ../..
+
+# Initialize PostgreSQL role (`quanta`), database (`quanta_db`), and core tables
+psql -U postgres -f scripts/init_db.sql
 ```
 
-### 2. Run the Synthetic ₹100 Cr Benchmark Example
-```bash
-python services/ai-engine/examples/basic_capital_allocation.py
-```
+Root `.env` and `apps/frontend/.env` are preconfigured for native localhost execution (`localhost:5432`, `8000`, `8001`, `8080`, `3000`).
 
-### 3. Launch the FastAPI AI Engine
-```bash
-cd services/ai-engine
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+### 2. Start All Services Natively
+- **Windows (Double-click or PowerShell):**
+  ```powershell
+  .\quanta.bat
+  # or directly:
+  powershell -ExecutionPolicy Bypass -File .\scripts\start_quanta.ps1
+  ```
+- **macOS / Linux / Git Bash / WSL:**
+  ```bash
+  ./scripts/start_quanta.sh
+  ```
+
+Once healthy, all four native endpoints are available:
+- **Web Dashboard & Optimization Lab:** `http://localhost:3000`
+- **Go API Gateway:** `http://localhost:8080/api/v1/health`
+- **AI Decision Engine (Swagger):** `http://localhost:8000/docs`
+- **Optimization & QAOA Engine (Swagger):** `http://localhost:8001/docs`
+
+### 3. Verify End-to-End Live Flow & Stop Services
+```powershell
+# Run end-to-end API smoke test (health checks, JWT auth, optimization compare, stress test)
+powershell -ExecutionPolicy Bypass -File .\scripts\smoke_test.ps1
+
+# Cleanly stop all native local services (ports 3000, 8080, 8000, 8001)
+powershell -ExecutionPolicy Bypass -File .\scripts\stop_quanta.ps1
+# or on POSIX shells:
+./scripts/stop_quanta.sh
 ```
-Interactive API documentation will be available at: `http://localhost:8000/docs`
 
 ---
 
-## Optimization Engine (Member 2 — Parv Sharma)
+## Running Unit Test Suites Individually
 
-The Optimization Engine (`services/optimization-engine/`, port 8001) provides mathematical programming (LP/QP), Quadratic Unconstrained Binary Optimization (QUBO) formulations, and Quantum Approximate Optimization Algorithm (QAOA) statevector simulation.
+```powershell
+# AI Decision Engine (49 tests)
+cd services/ai-engine && pytest -v
 
-### 1. Run Optimization Engine Tests
-```bash
-cd services/optimization-engine
-pytest -v
+# Optimization & QAOA Engine (28 tests)
+cd services/optimization-engine && pytest -v
+
+# Go Backend Gateway & Services
+cd apps/backend && go test ./...
+
+# SvelteKit Frontend
+cd apps/frontend && npm run check && npm test
 ```
 
-### 2. Run the Synthetic ₹100 Cr Optimization Demo
-```bash
-python services/optimization-engine/examples/basic_optimization_demo.py
-```
+---
 
-### 3. Launch the FastAPI Optimization Engine Service
-```bash
-cd services/optimization-engine
-uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
-```
-Interactive API documentation is available at: `http://localhost:8001/docs`
+## Optional: Docker Compose Execution
 
-### 4. Run the Full Classical vs QAOA Benchmark Suite
+If you prefer containers instead of running natively, an optional [docker-compose.yml](file:///c:/Users/Lab/personal/quanta/docker-compose.yml) configuration is maintained at the repository root:
+
 ```bash
-python -c "import sys; sys.path.insert(0, 'services/optimization-engine'); from app.benchmarks.reporter import generate_benchmark_and_reports; generate_benchmark_and_reports()"
+docker compose up --build
 ```
 
 ---
 
 ## Disclaimer
-QUANTA is an academic research prototype and simulated decision intelligence framework. It does not provide certified financial advice or execute live transactions with real financial institutions.
-
+QUANTA is an academic research prototype and simulated decision intelligence framework. All quantum optimization workflows run on deterministic classical CPU statevector simulation; no quantum hardware execution or financial advice is claimed.

@@ -8,12 +8,17 @@ import (
 
 func TestLoadDefaults(t *testing.T) {
 	os.Unsetenv("PORT")
+	os.Unsetenv("BACKEND_PORT")
 	os.Unsetenv("DATABASE_URL")
 	os.Unsetenv("AI_ENGINE_URL")
 	os.Unsetenv("OPTIMIZATION_ENGINE_URL")
 	os.Unsetenv("JWT_SECRET")
 	os.Unsetenv("JWT_TTL")
 	os.Unsetenv("CORS_ALLOWED_ORIGINS")
+	os.Unsetenv("ALLOWED_ORIGINS")
+	os.Unsetenv("APP_ENV")
+	os.Unsetenv("GO_ENV")
+	os.Unsetenv("ENVIRONMENT")
 
 	cfg := Load()
 
@@ -128,6 +133,36 @@ func TestConfig_Validate(t *testing.T) {
 		}
 		if err := cfg.Validate(); err != nil {
 			t.Fatalf("expected valid production config to pass, got: %v", err)
+		}
+	})
+}
+
+func TestLoadEnvironmentFallback(t *testing.T) {
+	t.Run("Falls back to ENVIRONMENT when APP_ENV and GO_ENV are empty", func(t *testing.T) {
+		t.Setenv("APP_ENV", "")
+		t.Setenv("GO_ENV", "")
+		t.Setenv("ENVIRONMENT", "staging")
+
+		cfg := Load()
+		if cfg.Environment != "staging" {
+			t.Errorf("expected Environment 'staging', got '%s'", cfg.Environment)
+		}
+	})
+
+	t.Run("APP_ENV and GO_ENV take precedence over ENVIRONMENT", func(t *testing.T) {
+		t.Setenv("APP_ENV", "")
+		t.Setenv("GO_ENV", "production")
+		t.Setenv("ENVIRONMENT", "development")
+
+		cfg := Load()
+		if cfg.Environment != "production" {
+			t.Errorf("expected GO_ENV 'production' to take precedence, got '%s'", cfg.Environment)
+		}
+
+		t.Setenv("APP_ENV", "staging")
+		cfg = Load()
+		if cfg.Environment != "staging" {
+			t.Errorf("expected APP_ENV 'staging' to take precedence, got '%s'", cfg.Environment)
 		}
 	})
 }

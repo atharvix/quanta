@@ -48,10 +48,27 @@ class TreasuryGameState:
 
         # Apply market shock penalties to payoff
         if self.active_shock:
-            # Impact on return
+            # Impact on return: sum allocations by asset_type (IDs may differ from type name)
+            equity_exposure = 0.0
+            bond_exposure = 0.0
+            for a_id, amount in st.allocations.items():
+                asset = self.assets_map.get(a_id)
+                if asset is None:
+                    # Graceful fallback when asset_id is missing from assets_map
+                    atype = a_id.lower()
+                else:
+                    atype = (
+                        asset.asset_type.value
+                        if hasattr(asset.asset_type, "value")
+                        else str(asset.asset_type)
+                    ).lower()
+                if atype == "equity":
+                    equity_exposure += amount
+                elif atype in ("corp_bond", "corporate_bond", "bond"):
+                    bond_exposure += amount
             shock_return_loss = (
-                st.allocations.get("equity", 0.0) * abs(self.active_shock.equity_drawdown) +
-                st.allocations.get("corp_bond", 0.0) * abs(self.active_shock.credit_spread_spike)
+                equity_exposure * abs(self.active_shock.equity_drawdown) +
+                bond_exposure * abs(self.active_shock.credit_spread_spike)
             ) / max(1.0, st.total_capital)
             
             stressed_return = base_return - shock_return_loss

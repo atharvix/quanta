@@ -118,6 +118,107 @@ export interface StrategyExecutionResponse extends StrategyExecutionLog {
 export interface OptimizationStatusResponse {
   status: string;
   reason: string;
+  best_classical_method?: string;
+  qaoa_approximation_ratio?: number | null;
+  simulation_note?: string;
+  problem_summary?: Record<string, any>;
+  summary_table?: OptimizationSummaryRow[];
+}
+
+// Optimization Engine (Classical vs. Quantum QAOA Lab) — matches shared/schemas/optimization_*.json
+export type OptimizationMethod = 'exact' | 'greedy' | 'sa' | 'slsqp' | 'milp' | 'qaoa' | string;
+
+export interface OptimizationAsset extends Asset {
+  min_investment?: number;
+  max_investment?: number;
+  group?: string;
+}
+
+export interface OptimizationLiability extends Partial<Liability> {
+  amount?: number;
+  interest_rate: number;
+  maturity?: number;
+}
+
+export interface OptimizationConstraint extends Constraint {
+  severity?: string;
+  penalty_weight?: number;
+}
+
+export interface OptimizationProblemPayload {
+  capital: number;
+  assets: OptimizationAsset[];
+  liabilities: OptimizationLiability[];
+  constraints: OptimizationConstraint[];
+  risk_tolerance: number;
+  minimum_liquidity: number;
+  objective: string;
+  step_size?: number;
+  max_exposure_pct?: number;
+  group_caps?: Record<string, number>;
+  covariance_matrix?: number[][];
+  candidate_subset?: string[];
+  market_state?: string;
+}
+
+export interface OptimizationOptions {
+  p?: number;
+  shots?: number;
+  seed?: number;
+  max_iterations?: number;
+  use_slack?: boolean;
+  [key: string]: any;
+}
+
+export interface OptimizationRequestPayload {
+  problem: OptimizationProblemPayload;
+  method?: OptimizationMethod;
+  options?: OptimizationOptions;
+  candidate_subset?: string[];
+}
+
+export interface OptimizationCompareRequestPayload {
+  problem: OptimizationProblemPayload;
+  options?: OptimizationOptions;
+  candidate_subset?: string[];
+}
+
+export interface OptimizationResult {
+  method: string;
+  status: 'optimal' | 'feasible' | 'infeasible' | 'error' | string;
+  allocation: Record<string, number>;
+  objective_value: number;
+  portfolio_return: number;
+  portfolio_risk: number;
+  liquidity: number;
+  capital_used: number;
+  feasible: boolean;
+  constraint_violations: string[];
+  runtime_ms: number;
+  metadata: Record<string, any>;
+}
+
+export interface OptimizationSummaryRow {
+  method: string;
+  status: string;
+  objective_value: number;
+  portfolio_return: number;
+  portfolio_risk: number;
+  liquidity: number;
+  capital_used: number;
+  feasible: boolean;
+  violations_count?: number;
+  runtime_ms: number;
+  [key: string]: any;
+}
+
+export interface OptimizationCompareResponse {
+  problem_summary: Record<string, any>;
+  results: Record<string, OptimizationResult>;
+  summary_table: OptimizationSummaryRow[];
+  best_classical_method: string;
+  qaoa_approximation_ratio?: number | null;
+  simulation_note: string;
 }
 
 export interface SearchResult {

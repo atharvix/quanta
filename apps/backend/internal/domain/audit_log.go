@@ -26,6 +26,9 @@ const (
 	ActionLiabilityCreated        = "liability.created"
 	ActionLiabilityUpdated        = "liability.updated"
 	ActionLiabilityDeleted        = "liability.deleted"
+	ActionOptimizationClassical   = "optimization.classical"
+	ActionOptimizationQuantum     = "optimization.quantum"
+	ActionOptimizationCompared    = "optimization.compared"
 )
 
 // AuditLog represents an immutable audit trail entry tracking state mutations.

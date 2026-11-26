@@ -18,7 +18,7 @@ from app.search.best_first import BestFirstSearch
 from app.search.astar import AStarSearch
 from app.risk.scoring import RiskEngine, RiskFactorBreakdown
 from app.risk.bayesian import BayesianRiskNetwork, BayesianEvidence, BayesianRiskInferenceResult
-from app.risk.sampling import MonteCarloRiskSimulator, MonteCarloSimulationReport
+from app.risk.sampling import MonteCarloRiskSimulator, MonteCarloSimulationReport, ScenarioGenerator, ScenarioResult
 from app.game.alpha_beta import AlphaBetaPruningSolver, AdversarialStressTestResult
 from app.mdp.environment import TreasuryMDPEnvironment, PolicyEvaluationReport
 from app.agents.decision_agent import DecisionAgent, DeliberationSummary
@@ -60,6 +60,7 @@ class RiskAnalyzeResponse(BaseModel):
     risk_breakdown: RiskFactorBreakdown
     bayesian_inference: BayesianRiskInferenceResult
     monte_carlo_report: Optional[MonteCarloSimulationReport] = None
+    scenario_summary: Optional[List[ScenarioResult]] = None
 
 
 class ConstraintsValidateRequest(BaseModel):
@@ -152,10 +153,19 @@ async def analyze_risk(request: RiskAnalyzeRequest):
                 request.state, search_problem.assets_map, num_scenarios=request.num_scenarios
             )
 
+        # 4. Scenario Generator — all 6 regimes
+        gen = ScenarioGenerator()
+        scenario_summary = gen.generate(
+            request.state,
+            search_problem.assets_map,
+            minimum_liquidity=request.problem.minimum_liquidity,
+        )
+
         return RiskAnalyzeResponse(
             risk_breakdown=risk_breakdown,
             bayesian_inference=bayes_result,
-            monte_carlo_report=mc_report
+            monte_carlo_report=mc_report,
+            scenario_summary=scenario_summary,
         )
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -245,8 +255,12 @@ async def evaluate_agents(problem: FinancialProblem):
 
 
 @router.post("/stress-test/adversarial", response_model=AdversarialStressTestResult)
+@router.post("/stress-test", response_model=AdversarialStressTestResult)
 async def adversarial_stress_test(problem: FinancialProblem):
-    """Execute Alpha-Beta pruning game search against worst-case macroeconomic shock adversary."""
+    """Execute Alpha-Beta pruning game search against worst-case macroeconomic shock adversary.
+
+    Also accessible at ``/stress-test`` as a convenience alias.
+    """
     try:
         search_problem = FinancialAllocationProblem(problem)
         solver = AlphaBetaPruningSolver()
