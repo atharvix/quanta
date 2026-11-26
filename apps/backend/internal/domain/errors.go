@@ -38,6 +38,9 @@ var (
 
 	// ErrInvalidRole is returned when an unknown role is supplied.
 	ErrInvalidRole = errors.New("invalid role")
+
+	// ErrConflict is returned when attempting to create a resource that already exists.
+	ErrConflict = errors.New("resource conflict")
 )
 
 // ValidationError represents one or more business validation failures with field-level details.

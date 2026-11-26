@@ -20,6 +20,7 @@ type AIClient interface {
 	CompareSearches(ctx context.Context, problem any) (json.RawMessage, error)
 	AnalyzeRisk(ctx context.Context, req domain.AIRiskAnalyzeRequest) (*domain.AIRiskAnalyzeResponse, error)
 	AdversarialStressTest(ctx context.Context, problem any) (*domain.AdversarialStressTestResult, error)
+	EvaluateAgents(ctx context.Context, problem any) (*domain.CouncilDeliberationSummary, error)
 }
 
 // HTTPAIClient implements AIClient using net/http.
@@ -330,4 +331,54 @@ func (c *HTTPAIClient) AdversarialStressTest(ctx context.Context, problem any) (
 	}
 
 	return &stressResp, nil
+}
+
+// EvaluateAgents calls POST /api/v1/agents/evaluate on the AI Engine with the financial problem.
+func (c *HTTPAIClient) EvaluateAgents(ctx context.Context, problem any) (*domain.CouncilDeliberationSummary, error) {
+	reqBody, err := json.Marshal(problem)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode council evaluate request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/agents/evaluate", bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", domain.ErrUpstreamUnavailable, err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := readBoundedResponseBody(resp.Body, maxResponseBodyBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnprocessableEntity {
+		var errResp struct {
+			Detail any `json:"detail"`
+		}
+		if jsonErr := json.Unmarshal(bodyBytes, &errResp); jsonErr == nil && errResp.Detail != nil {
+			return nil, fmt.Errorf("AI engine rejected council evaluate input: %v", errResp.Detail)
+		}
+		return nil, fmt.Errorf("AI engine rejected council evaluate input (status %d)", resp.StatusCode)
+	}
+
+	if resp.StatusCode >= 500 {
+		return nil, fmt.Errorf("%w: status %d", domain.ErrUpstreamUnavailable, resp.StatusCode)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%w: unexpected status %d", domain.ErrUpstreamUnavailable, resp.StatusCode)
+	}
+
+	var summary domain.CouncilDeliberationSummary
+	if err := json.Unmarshal(bodyBytes, &summary); err != nil {
+		return nil, fmt.Errorf("failed to decode council deliberation response: %w", err)
+	}
+
+	return &summary, nil
 }

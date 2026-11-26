@@ -60,7 +60,9 @@ func main() {
 	auditSvc := service.NewAuditService(auditRepo)
 
 	treasuryRepo := repository.NewPgxTreasuryRepository(db)
+	financialEntryRepo := repository.NewPgxFinancialEntryRepository(db)
 	treasuryService := service.NewTreasuryService(treasuryRepo, auditSvc)
+	treasuryService.SetEntryRepository(financialEntryRepo)
 	treasuryHandler := handlers.NewTreasuryHandler(treasuryService)
 
 	strategyRepo := repository.NewPgxStrategyRepository(db)

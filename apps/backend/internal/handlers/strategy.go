@@ -168,3 +168,85 @@ func (h *StrategyHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 
 	WriteJSON(w, http.StatusOK, strategyLog)
 }
+
+// EvaluateCouncil handles POST /api/v1/treasuries/{id}/council/evaluate and /treasuries/{id}/agents/evaluate.
+func (h *StrategyHandler) EvaluateCouncil(w http.ResponseWriter, r *http.Request) {
+	treasuryID := chi.URLParam(r, "id")
+
+	// 1 MB maximum request body size
+	r.Body = http.MaxBytesReader(w, r.Body, 1024*1024)
+
+	var input domain.EvaluateCouncilInput
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+
+	if err := decoder.Decode(&input); err != nil {
+		WriteError(w, http.StatusBadRequest, "invalid request payload: "+err.Error())
+		return
+	}
+
+	result, err := h.service.EvaluateCouncil(r.Context(), treasuryID, input)
+	if err != nil {
+		h.handleCouncilError(w, err, "failed to evaluate council")
+		return
+	}
+
+	WriteJSON(w, http.StatusOK, result)
+}
+
+// EvaluateDirect handles POST /api/v1/agents/evaluate directly with a FinancialProblem.
+func (h *StrategyHandler) EvaluateDirect(w http.ResponseWriter, r *http.Request) {
+	// 1 MB maximum request body size
+	r.Body = http.MaxBytesReader(w, r.Body, 1024*1024)
+
+	var problem domain.FinancialProblem
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+
+	if err := decoder.Decode(&problem); err != nil {
+		WriteError(w, http.StatusBadRequest, "invalid request payload: "+err.Error())
+		return
+	}
+
+	result, err := h.service.EvaluateDirectProblem(r.Context(), problem)
+	if err != nil {
+		h.handleCouncilError(w, err, "failed to evaluate agents directly")
+		return
+	}
+
+	WriteJSON(w, http.StatusOK, result)
+}
+
+func (h *StrategyHandler) handleCouncilError(w http.ResponseWriter, err error, actionMsg string) {
+	if errors.Is(err, domain.ErrInvalidID) {
+		WriteError(w, http.StatusBadRequest, "invalid treasury ID format")
+		return
+	}
+	var valErr *domain.ValidationError
+	if errors.As(err, &valErr) {
+		WriteValidationError(w, valErr.Details)
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		WriteError(w, http.StatusNotFound, "treasury not found")
+		return
+	}
+	if errors.Is(err, domain.ErrForbidden) {
+		WriteError(w, http.StatusForbidden, "forbidden: access to this treasury is restricted")
+		return
+	}
+	if errors.Is(err, domain.ErrUpstreamUnavailable) {
+		WriteError(w, http.StatusBadGateway, "AI engine unavailable")
+		return
+	}
+	if errors.Is(err, domain.ErrDatabaseUnavailable) {
+		WriteError(w, http.StatusServiceUnavailable, "database unavailable")
+		return
+	}
+	if strings.Contains(err.Error(), "rejected council evaluate input") {
+		WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	log.Printf("[ERROR] %s: %v", actionMsg, err)
+	WriteError(w, http.StatusInternalServerError, "internal server error")
+}

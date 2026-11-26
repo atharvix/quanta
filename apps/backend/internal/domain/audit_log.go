@@ -8,6 +8,8 @@ import (
 // Standard audit action types across the QUANTA platform.
 const (
 	ActionTreasuryCreated         = "treasury.created"
+	ActionTreasuryUpdated         = "treasury.updated"
+	ActionCouncilEvaluated        = "council.evaluated"
 	ActionStrategyGenerated       = "strategy.generated"
 	ActionFinancialProblemCreated = "financial_problem.created"
 	ActionOrchestrationCompleted  = "orchestration.completed"
@@ -18,6 +20,12 @@ const (
 	ActionUserRoleChanged         = "user.role_changed"
 	ActionRiskAnalyzed            = "risk.analyzed"
 	ActionStressTested            = "stress_test.executed"
+	ActionAssetCreated            = "asset.created"
+	ActionAssetUpdated            = "asset.updated"
+	ActionAssetDeleted            = "asset.deleted"
+	ActionLiabilityCreated        = "liability.created"
+	ActionLiabilityUpdated        = "liability.updated"
+	ActionLiabilityDeleted        = "liability.deleted"
 )
 
 // AuditLog represents an immutable audit trail entry tracking state mutations.

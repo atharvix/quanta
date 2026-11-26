@@ -63,6 +63,62 @@ func (c *CreateTreasuryInput) Validate() []string {
 	return errs
 }
 
+// UpdateTreasuryInput defines the patch payload for modifying an existing corporate treasury.
+type UpdateTreasuryInput struct {
+	Name              *string  `json:"name,omitempty"`
+	BaseCurrency      *string  `json:"base_currency,omitempty"`
+	TotalCapital      *float64 `json:"total_capital,omitempty"`
+	RiskTolerance     *float64 `json:"risk_tolerance,omitempty"`
+	MinLiquidityRatio *float64 `json:"min_liquidity_ratio,omitempty"`
+}
+
+// Validate checks business rules for updating a corporate treasury.
+func (u *UpdateTreasuryInput) Validate() []string {
+	var errs []string
+
+	if u.Name != nil {
+		trimmed := strings.TrimSpace(*u.Name)
+		if trimmed == "" {
+			errs = append(errs, "name cannot be empty")
+		} else if len(trimmed) > 255 {
+			errs = append(errs, "name cannot exceed 255 characters")
+		}
+	}
+
+	if u.BaseCurrency != nil {
+		trimmed := strings.TrimSpace(*u.BaseCurrency)
+		if trimmed == "" {
+			errs = append(errs, "base_currency cannot be empty")
+		} else if len(trimmed) > 10 {
+			errs = append(errs, "base_currency cannot exceed 10 characters")
+		}
+	}
+
+	if u.TotalCapital != nil {
+		if *u.TotalCapital <= 0 {
+			errs = append(errs, "total_capital must be greater than 0")
+		}
+	}
+
+	if u.RiskTolerance != nil {
+		if *u.RiskTolerance < 0.0 || *u.RiskTolerance > 1.0 {
+			errs = append(errs, "risk_tolerance must be between 0.0 and 1.0")
+		}
+	}
+
+	if u.MinLiquidityRatio != nil {
+		if *u.MinLiquidityRatio < 0.0 || *u.MinLiquidityRatio > 1.0 {
+			errs = append(errs, "min_liquidity_ratio must be between 0.0 and 1.0")
+		}
+	}
+
+	if u.Name == nil && u.BaseCurrency == nil && u.TotalCapital == nil && u.RiskTolerance == nil && u.MinLiquidityRatio == nil {
+		errs = append(errs, "at least one editable field must be provided")
+	}
+
+	return errs
+}
+
 // StrategyExecutionLog stores audit records of each optimization run.
 // Maps directly to `strategy_execution_logs` in infrastructure/postgres/init.sql.
 type StrategyExecutionLog struct {

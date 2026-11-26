@@ -44,6 +44,10 @@ func (m *MockAIHealthChecker) AdversarialStressTest(ctx context.Context, problem
 	return nil, nil
 }
 
+func (m *MockAIHealthChecker) EvaluateAgents(ctx context.Context, problem any) (*domain.CouncilDeliberationSummary, error) {
+	return nil, nil
+}
+
 func TestHealthHandler_Root(t *testing.T) {
 	h := NewHealthHandler(nil, nil)
 

@@ -221,7 +221,7 @@
             <span class="detail-label">Current Role</span>
             <span class="badge badge-{selectedUser.role}">{selectedUser.role}</span>
           </div>
-          <div class="arrow-indicator">➔</div>
+          <div class="arrow-indicator">&rarr;</div>
           <div>
             <span class="detail-label">Target Role</span>
             <span class="badge badge-{targetRole}">{targetRole}</span>

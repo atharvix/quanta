@@ -4,6 +4,17 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="text-scale" content="scale" />
+		<script>
+			try {
+				var saved = localStorage.getItem('quanta_theme') || 'dark';
+				var resolved = saved === 'system'
+					? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+					: saved;
+				document.documentElement.setAttribute('data-theme', resolved);
+				document.documentElement.classList.add('theme-' + resolved);
+				document.documentElement.style.colorScheme = resolved;
+			} catch (_) {}
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

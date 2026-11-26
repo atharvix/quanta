@@ -37,8 +37,8 @@ func TestCORSMiddleware(t *testing.T) {
 		}
 
 		methodsHeader := rec.Header().Get("Access-Control-Allow-Methods")
-		if methodsHeader != "GET, POST, PATCH, OPTIONS" {
-			t.Errorf("expected 'GET, POST, PATCH, OPTIONS', got '%s'", methodsHeader)
+		if methodsHeader != "GET, POST, PUT, DELETE, PATCH, OPTIONS" {
+			t.Errorf("expected 'GET, POST, PUT, DELETE, PATCH, OPTIONS', got '%s'", methodsHeader)
 		}
 
 		headersHeader := rec.Header().Get("Access-Control-Allow-Headers")

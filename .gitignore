@@ -32,6 +32,7 @@ node_modules/
 build/
 .env.local
 .env.*.local
+!apps/frontend/src/lib/
 
 # Go
 bin/

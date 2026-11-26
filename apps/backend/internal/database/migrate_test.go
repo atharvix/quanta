@@ -25,12 +25,24 @@ func TestMigrations_EmbeddedDiscovery(t *testing.T) {
 		"001_step5_tables.sql",
 		"002_users.sql",
 		"003_treasury_owner.sql",
+		"004_treasury_assets_liabilities.sql",
+		"005_audit_logs_entity_id_text.sql",
 	}
 
 	for _, expected := range expectedMigrations {
 		if !foundMap[expected] {
 			t.Errorf("expected migration '%s' to be embedded in migrations.Files", expected)
 		}
+	}
+
+	// Verify content of 005_audit_logs_entity_id_text.sql
+	content005, err := fs.ReadFile(migrations.Files, "005_audit_logs_entity_id_text.sql")
+	if err != nil {
+		t.Fatalf("failed to read 005_audit_logs_entity_id_text.sql: %v", err)
+	}
+	contentStr005 := string(content005)
+	if !strings.Contains(contentStr005, "ALTER COLUMN entity_id TYPE VARCHAR(255)") {
+		t.Errorf("expected entity_id alteration to VARCHAR(255), got: %s", contentStr005)
 	}
 
 	// Verify content of 003_treasury_owner.sql

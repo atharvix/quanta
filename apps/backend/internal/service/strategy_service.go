@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/atharvix/quanta/apps/backend/internal/clients"
@@ -217,4 +218,105 @@ func (s *StrategyService) ListStrategiesByTreasuryID(ctx context.Context, treasu
 	}
 
 	return s.strategyRepo.ListLogsByTreasuryID(ctx, treasuryID, limit, offset)
+}
+
+// EvaluateCouncil executes a full multi-agent council deliberation for a corporate treasury.
+func (s *StrategyService) EvaluateCouncil(
+	ctx context.Context,
+	treasuryID string,
+	input domain.EvaluateCouncilInput,
+) (*domain.CouncilDeliberationSummary, error) {
+	if !uuidRegex.MatchString(treasuryID) {
+		return nil, domain.ErrInvalidID
+	}
+
+	treasury, err := s.treasuryRepo.GetByID(ctx, treasuryID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := domain.CheckTreasuryAccess(ctx, treasury); err != nil {
+		return nil, err
+	}
+
+	var stepSize float64
+	if input.StepSize == nil {
+		stepSize = treasury.TotalCapital / 20.0
+	} else {
+		if *input.StepSize <= 0 {
+			return nil, &domain.ValidationError{
+				Details: []string{"step_size must be greater than 0"},
+			}
+		}
+		stepSize = *input.StepSize
+	}
+
+	if (treasury.TotalCapital / stepSize) > 200.0 {
+		return nil, &domain.ValidationError{
+			Details: []string{"step_size too small for capital, max 200 steps"},
+		}
+	}
+
+	objective := input.Objective
+	if strings.TrimSpace(objective) == "" {
+		objective = domain.DefaultObjective
+	}
+
+	marketState := input.MarketState
+	if strings.TrimSpace(marketState) == "" {
+		marketState = domain.DefaultMarketState
+	}
+
+	liabilities := input.Liabilities
+	if liabilities == nil {
+		liabilities = []domain.Liability{}
+	}
+	constraints := input.Constraints
+	if constraints == nil {
+		constraints = []domain.Constraint{}
+	}
+
+	problem := domain.FinancialProblem{
+		Capital:          treasury.TotalCapital,
+		RiskTolerance:    treasury.RiskTolerance,
+		MinimumLiquidity: treasury.MinLiquidityRatio,
+		Assets:           input.Assets,
+		Liabilities:      liabilities,
+		Constraints:      constraints,
+		StepSize:         stepSize,
+		Objective:        objective,
+		MarketState:      marketState,
+	}
+
+	if errs := problem.Validate(); len(errs) > 0 {
+		return nil, &domain.ValidationError{Details: errs}
+	}
+
+	deliberation, err := s.aiClient.EvaluateAgents(ctx, problem)
+	if err != nil {
+		return nil, err
+	}
+
+	if s.auditSvc != nil {
+		s.auditSvc.Record(ctx, domain.ActionCouncilEvaluated, "treasury", &treasury.ID, map[string]any{
+			"consensus_reached": deliberation.ConsensusReached,
+			"expected_return":   deliberation.RecommendedStrategy.ExpectedReturn,
+			"risk_score":        deliberation.RecommendedStrategy.RiskScore,
+		})
+	}
+
+	return deliberation, nil
+}
+
+// EvaluateDirectProblem executes multi-agent council deliberation directly against an arbitrary FinancialProblem.
+func (s *StrategyService) EvaluateDirectProblem(
+	ctx context.Context,
+	problem domain.FinancialProblem,
+) (*domain.CouncilDeliberationSummary, error) {
+	problem.ApplyDefaults()
+	if errs := problem.Validate(); len(errs) > 0 {
+		return nil, &domain.ValidationError{Details: errs}
+	}
+
+	return s.aiClient.EvaluateAgents(ctx, problem)
 }

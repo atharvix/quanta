@@ -509,6 +509,118 @@ func TestHTTPAIClient_AdversarialStressTest(t *testing.T) {
 	})
 }
 
+func TestHTTPAIClient_EvaluateAgents(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("Success 200 with valid Council Deliberation summary", func(t *testing.T) {
+		summaryJSON := `{
+			"treasury_opinion": {
+				"agent_name": "Chief Treasury Agent",
+				"role": "treasury",
+				"is_acceptable": true,
+				"score": 0.58,
+				"findings": ["Unallocated treasury cash balance: ₹0.00 Cr."],
+				"suggested_actions": []
+			},
+			"risk_opinion": {
+				"agent_name": "Chief Risk Officer Agent",
+				"role": "risk",
+				"is_acceptable": true,
+				"score": 0.583,
+				"findings": ["Base asset risk is 0.1510 across deployed capital."],
+				"suggested_actions": []
+			},
+			"compliance_opinion": {
+				"agent_name": "Regulatory Compliance Agent",
+				"role": "compliance",
+				"is_acceptable": true,
+				"score": 1.0,
+				"findings": ["Total balance sheet sum ₹100.00 Cr matches budget ₹100.00 Cr"],
+				"suggested_actions": []
+			},
+			"consensus_reached": true,
+			"recommended_strategy": {
+				"actions": [],
+				"total_allocated": 90.0,
+				"expected_return": 0.087,
+				"risk_score": 0.1326,
+				"liquidity_ratio": 0.91,
+				"objective_value": 0.08,
+				"is_compliant": true,
+				"explanation": "Optimal strategy synthesized via A* Search"
+			},
+			"search_metrics": {
+				"algorithm": "A* Search",
+				"success": true,
+				"objective_value": 0.08,
+				"expected_return": 0.087,
+				"risk_score": 0.1326,
+				"liquidity_ratio": 0.91,
+				"states_explored": 50,
+				"execution_time_ms": 8.51,
+				"depth": 10
+			}
+		}`
+
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/api/v1/agents/evaluate" {
+				t.Errorf("expected /api/v1/agents/evaluate, got %s", r.URL.Path)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(summaryJSON))
+		})
+
+		problem := domain.FinancialProblem{
+			Capital: 100.0,
+		}
+
+		res, err := client.EvaluateAgents(ctx, problem)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if !res.ConsensusReached {
+			t.Errorf("expected consensus_reached to be true")
+		}
+		if res.TreasuryOpinion.AgentName != "Chief Treasury Agent" {
+			t.Errorf("expected Chief Treasury Agent, got %s", res.TreasuryOpinion.AgentName)
+		}
+		if res.RiskOpinion.Score != 0.583 {
+			t.Errorf("expected risk score 0.583, got %f", res.RiskOpinion.Score)
+		}
+		if res.ComplianceOpinion.Role != domain.AgentRoleCompliance {
+			t.Errorf("expected compliance role, got %s", res.ComplianceOpinion.Role)
+		}
+		if res.RecommendedStrategy.Explanation != "Optimal strategy synthesized via A* Search" {
+			t.Errorf("unexpected explanation: %s", res.RecommendedStrategy.Explanation)
+		}
+	})
+
+	t.Run("Upstream 500 maps to ErrUpstreamUnavailable", func(t *testing.T) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		})
+
+		_, err := client.EvaluateAgents(ctx, nil)
+		if !errors.Is(err, domain.ErrUpstreamUnavailable) {
+			t.Fatalf("expected ErrUpstreamUnavailable, got: %v", err)
+		}
+	})
+
+	t.Run("Input rejected with 400 detail", func(t *testing.T) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"detail":"invalid council problem specification"}`))
+		})
+
+		_, err := client.EvaluateAgents(ctx, nil)
+		if err == nil || !strings.Contains(err.Error(), "invalid council problem specification") {
+			t.Fatalf("expected rejection detail in error, got: %v", err)
+		}
+	})
+}
+
 func TestReadBoundedResponseBody(t *testing.T) {
 	t.Run("Response within limit succeeds", func(t *testing.T) {
 		input := "valid small response"
