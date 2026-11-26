@@ -129,7 +129,7 @@ if ($psqlExe -and $dbUrl) {
     foreach ($rel in $migrationFiles) {
         $fullSql = Join-Path $RepoRoot $rel
         if (Test-Path $fullSql) {
-            $out = & $psqlExe $dbUrl -v ON_ERROR_STOP=1 -f $fullSql 2>&1
+            $out = $prevErr = $ErrorActionPreference; $ErrorActionPreference = "Continue"; $out = & $psqlExe -q -v ON_ERROR_STOP=1 -d $dbUrl -f $fullSql 2>&1; $ErrorActionPreference = $prevErr
             if ($LASTEXITCODE -ne 0) {
                 $migrationOk = $false
                 Write-Warn "Migration $rel returned non-zero status (Go backend will also attempt migrations on connect): $out"
@@ -286,3 +286,4 @@ Write-Host "  - Optimization Lab   : http://localhost:8001/docs" -ForegroundColo
 Write-Host ""
 Write-Host "  Verify live APIs : powershell -ExecutionPolicy Bypass -File .\scripts\smoke_test.ps1" -ForegroundColor Gray
 Write-Host "  Stop all servers : powershell -ExecutionPolicy Bypass -File .\scripts\stop_quanta.ps1" -ForegroundColor Gray
+
