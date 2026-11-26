@@ -149,3 +149,38 @@ export function formatTreasuryAction(action: string | null | undefined): string 
   return action.trim().replace(/^<Action:\s*/, '').replace(/>$/, '').trim();
 }
 
+/**
+ * Formats a risk score value or returns 'Unavailable'.
+ */
+export function formatRiskScore(score: number | null | undefined): string {
+  if (score === null || score === undefined || isNaN(Number(score))) {
+    return 'Unavailable';
+  }
+  return Number(score).toFixed(3);
+}
+
+/**
+ * Formats a Bayesian posterior probability safely clamped between 0.0 and 1.0.
+ */
+export function formatPosteriorProb(val: number | null | undefined): string {
+  if (val === null || val === undefined || isNaN(Number(val))) {
+    return 'Unavailable';
+  }
+  const clamped = Math.max(0, Math.min(1, Number(val)));
+  return `${(clamped * 100).toFixed(1)}%`;
+}
+
+/**
+ * Calculates stressed liquidity floor given base ratio and stress multiplier.
+ * Caps at 1.0 (100% liquidity).
+ */
+export function calculateStressedFloor(
+  baseLiquidity: number | null | undefined,
+  multiplier: number | null | undefined
+): number {
+  const base = Math.max(0, Math.min(1, Number(baseLiquidity) || 0));
+  const mult = Math.max(1, Number(multiplier) || 1);
+  return Math.min(1.0, base * mult);
+}
+
+

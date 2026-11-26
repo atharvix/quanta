@@ -5,7 +5,10 @@ import {
   calculateLiquidityFloor,
   formatBayesianEvidence,
   getRiskTierClass,
-  formatTreasuryAction
+  formatTreasuryAction,
+  formatRiskScore,
+  formatPosteriorProb,
+  calculateStressedFloor
 } from './risk';
 
 describe('QUANTA F5 Frontend Risk Logic', () => {
@@ -276,6 +279,31 @@ describe('QUANTA F5 Frontend Risk Logic', () => {
         expect(formatTreasuryAction(undefined)).toBe('Hold / Maintain Current Allocations');
         expect(formatTreasuryAction('')).toBe('Hold / Maintain Current Allocations');
         expect(formatTreasuryAction('   ')).toBe('Hold / Maintain Current Allocations');
+      });
+    });
+
+    describe('Risk Metrics & Bayesian Probabilities Formatting', () => {
+      it('formats risk scores or returns Unavailable', () => {
+        expect(formatRiskScore(0.08123)).toBe('0.081');
+        expect(formatRiskScore(null)).toBe('Unavailable');
+        expect(formatRiskScore(undefined)).toBe('Unavailable');
+        expect(formatRiskScore(NaN)).toBe('Unavailable');
+      });
+
+      it('formats Bayesian posterior probabilities clamped to [0, 100%]', () => {
+        expect(formatPosteriorProb(0.3)).toBe('30.0%');
+        expect(formatPosteriorProb(0)).toBe('0.0%');
+        expect(formatPosteriorProb(1)).toBe('100.0%');
+        expect(formatPosteriorProb(1.25)).toBe('100.0%');
+        expect(formatPosteriorProb(-0.1)).toBe('0.0%');
+        expect(formatPosteriorProb(null)).toBe('Unavailable');
+      });
+
+      it('calculates stressed liquidity floor safely capped at 100%', () => {
+        expect(calculateStressedFloor(0.25, 1.2)).toBeCloseTo(0.30);
+        expect(calculateStressedFloor(0.80, 1.5)).toBe(1.0);
+        expect(calculateStressedFloor(null, 1.2)).toBe(0);
+        expect(calculateStressedFloor(0.20, null)).toBe(0.20);
       });
     });
   });
