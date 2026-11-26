@@ -105,10 +105,13 @@ All solvers (Search, CSP, Classical LP, QUBO, QAOA) accept the same canonical in
 
 ## 3. Optimization Engine Integration Contract (Parv — Port 8001)
 
-Parv will implement matching endpoints on `services/optimization-engine`:
-- `POST /api/v1/classical/optimize`: Solves continuous quadratic programming (Markowitz/Sharpe frontier) using SciPy.
-- `POST /api/v1/quantum/qubo`: Formulates binary allocation as a QUBO matrix $Q$ where objective $= x^T Q x$.
-- `POST /api/v1/quantum/qaoa`: Executes QAOA circuit simulation on state vector simulator and returns quantum sample distribution vs classical ground truth.
+`services/optimization-engine` exposes the following FastAPI endpoints:
+- `GET /health`: Service health check (`status`, `service`, `environment`, `version`, `port`).
+- `POST /api/v1/optimization/classical` (alias `POST /api/v1/classical/optimize`): Executes `exact`, `greedy`, `sa`/`simulated_annealing`, `slsqp`/`continuous`, or `milp`.
+- `POST /api/v1/quantum/qubo`: Formulates binary allocation as a QUBO matrix $Q$ where objective $= x^T Q x + \text{offset}$, with optional slack variables.
+- `POST /api/v1/optimization/quantum` (alias `POST /api/v1/quantum/qaoa`): Executes QAOA circuit simulation on the CPU statevector simulator (capped by `MAX_QUBITS_CAP`) and returns quantum sample distribution vs classical ground truth.
+- `POST /api/v1/optimization/compare`: Benchmarks Exact, Greedy, Simulated Annealing, Continuous SLSQP, and QAOA side-by-side.
+- `POST /api/v1/optimization/benchmark`: Generates a synthetic instance of size `n_assets` and runs a comparative benchmark.
 
 ---
 

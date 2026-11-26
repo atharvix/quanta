@@ -40,24 +40,28 @@ services:
       retries: 3
       start_period: 5s
 
-  # Optimization Engine (Member 2) is assigned to the "optimization" profile
-  # so the core platform builds and boots cleanly while Member 2's Dockerfile is pending.
-  # Run `docker compose --profile optimization up` once Member 2 integrates their solver.
   optimization-engine:
     build:
       context: ./services/optimization-engine
       dockerfile: Dockerfile
     container_name: quanta-optimization-engine
-    profiles:
-      - optional
-      - optimization
+    restart: unless-stopped
     environment:
+      - OPTIMIZATION_ENGINE_HOST=0.0.0.0
       - OPTIMIZATION_ENGINE_PORT=8001
       - ENVIRONMENT=${ENVIRONMENT:-development}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     ports:
       - "${OPTIMIZATION_ENGINE_PORT:-8001}:8001"
     volumes:
       - ./services/optimization-engine:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
   backend:
     build:
@@ -85,6 +89,8 @@ services:
       postgres:
         condition: service_healthy
       ai-engine:
+        condition: service_started
+      optimization-engine:
         condition: service_started
 
   frontend:
