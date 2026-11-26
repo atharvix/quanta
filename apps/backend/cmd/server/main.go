@@ -23,6 +23,9 @@ import (
 func main() {
 	// 1. Load environment configuration with production defaults
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("[FATAL] Configuration validation error: %v", err)
+	}
 	if cfg.IsDefaultJWTSecret() {
 		log.Println("[WARN] Using default insecure JWT_SECRET (dev-only-change-me-please). Do NOT use in production!")
 	}
@@ -48,15 +51,18 @@ func main() {
 	// 3. Start background retry loop to automatically reconnect if DB is offline or recovers
 	db.StartBackgroundRetry(ctx, 5*time.Second)
 
-	// 4. Initialize HTTP client for upstream AI Engine
+	// 4. Initialize HTTP clients for upstream AI and Optimization Engines
 	aiClient := clients.NewHTTPAIClient(cfg.AIEngineURL)
+	optClient := clients.NewHTTPOptimizationClient(cfg.OptimizationEngineURL)
 
 	// 5. Initialize clean architecture layers
 	auditRepo := repository.NewPgxAuditRepository(db)
 	auditSvc := service.NewAuditService(auditRepo)
 
 	treasuryRepo := repository.NewPgxTreasuryRepository(db)
+	financialEntryRepo := repository.NewPgxFinancialEntryRepository(db)
 	treasuryService := service.NewTreasuryService(treasuryRepo, auditSvc)
+	treasuryService.SetEntryRepository(financialEntryRepo)
 	treasuryHandler := handlers.NewTreasuryHandler(treasuryService)
 
 	strategyRepo := repository.NewPgxStrategyRepository(db)
@@ -72,7 +78,7 @@ func main() {
 	orchHandler := handlers.NewOrchestrationHandler(orchService)
 
 	auditHandler := handlers.NewAuditHandler(auditSvc)
-	healthHandler := handlers.NewHealthHandler(db, aiClient)
+	healthHandler := handlers.NewHealthHandler(db, aiClient, optClient)
 
 	riskService := service.NewRiskService(treasuryRepo, aiClient, auditSvc)
 	riskHandler := handlers.NewRiskHandler(riskService)

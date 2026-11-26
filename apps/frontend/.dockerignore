@@ -1,0 +1,9 @@
+node_modules
+.svelte-kit
+build
+dist
+.env
+.env.local
+.git
+.vscode
+npm-debug.log*

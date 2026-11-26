@@ -225,16 +225,9 @@ func (s *RiskService) AnalyzeRisk(
 		return nil, err
 	}
 
-	// Enforce resource-level authorization:
-	// Admin has unrestricted platform-wide access to all corporate treasuries.
-	// Analyst can access only a Treasury they own or are explicitly assigned to.
-	// Legacy / unassigned treasuries (OwnerID == nil) return ErrForbidden to Analysts until explicitly assigned.
-	callerRole := domain.RoleFromContext(ctx)
-	callerID := domain.UserIDFromContext(ctx)
-	if callerRole != domain.RoleAdmin {
-		if treasury.OwnerID == nil || *treasury.OwnerID == "" || callerID == "" || *treasury.OwnerID != callerID {
-			return nil, domain.ErrForbidden
-		}
+	// Enforce resource-level authorization
+	if err := domain.CheckTreasuryAccess(ctx, treasury); err != nil {
+		return nil, err
 	}
 
 	st, prob, err := s.buildFinancialStateAndProblem(
@@ -303,16 +296,9 @@ func (s *RiskService) AdversarialStressTest(
 		return nil, err
 	}
 
-	// Enforce resource-level authorization:
-	// Admin has unrestricted platform-wide access to all corporate treasuries.
-	// Analyst can access only a Treasury they own or are explicitly assigned to.
-	// Legacy / unassigned treasuries (OwnerID == nil) return ErrForbidden to Analysts until explicitly assigned.
-	callerRole := domain.RoleFromContext(ctx)
-	callerID := domain.UserIDFromContext(ctx)
-	if callerRole != domain.RoleAdmin {
-		if treasury.OwnerID == nil || *treasury.OwnerID == "" || callerID == "" || *treasury.OwnerID != callerID {
-			return nil, domain.ErrForbidden
-		}
+	// Enforce resource-level authorization
+	if err := domain.CheckTreasuryAccess(ctx, treasury); err != nil {
+		return nil, err
 	}
 
 	st, prob, err := s.buildFinancialStateAndProblem(

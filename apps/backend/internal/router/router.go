@@ -33,6 +33,9 @@ func NewRouter(
 		r.Use(appmw.CORS(cfg.CORSAllowedOrigins))
 	}
 
+	// 0.1 Enterprise security response headers
+	r.Use(appmw.SecurityHeaders())
+
 	// 1. Injects a unique X-Request-ID into each request for end-to-end tracing
 	r.Use(chimw.RequestID)
 
@@ -92,6 +95,10 @@ func NewRouter(
 				if treasuryHandler != nil {
 					viewer.Get("/treasuries", treasuryHandler.List)
 					viewer.Get("/treasuries/{id}", treasuryHandler.GetByID)
+					viewer.Get("/treasuries/{id}/assets", treasuryHandler.ListAssets)
+					viewer.Get("/treasuries/{id}/assets/{assetId}", treasuryHandler.GetAsset)
+					viewer.Get("/treasuries/{id}/liabilities", treasuryHandler.ListLiabilities)
+					viewer.Get("/treasuries/{id}/liabilities/{liabilityId}", treasuryHandler.GetLiability)
 					if strategyHandler != nil {
 						viewer.Get("/treasuries/{id}/strategies", strategyHandler.ListByTreasury)
 					}
@@ -117,9 +124,24 @@ func NewRouter(
 
 				if treasuryHandler != nil {
 					analyst.Post("/treasuries", treasuryHandler.Create)
+					analyst.Patch("/treasuries/{id}", treasuryHandler.Update)
+					analyst.Post("/treasuries/{id}/assets", treasuryHandler.CreateAsset)
+					analyst.Put("/treasuries/{id}/assets/{assetId}", treasuryHandler.UpdateAsset)
+					analyst.Delete("/treasuries/{id}/assets/{assetId}", treasuryHandler.DeleteAsset)
+					analyst.Put("/treasuries/{id}/assets", treasuryHandler.BulkSyncAssets)
+					analyst.Post("/treasuries/{id}/liabilities", treasuryHandler.CreateLiability)
+					analyst.Put("/treasuries/{id}/liabilities/{liabilityId}", treasuryHandler.UpdateLiability)
+					analyst.Delete("/treasuries/{id}/liabilities/{liabilityId}", treasuryHandler.DeleteLiability)
+					analyst.Put("/treasuries/{id}/liabilities", treasuryHandler.BulkSyncLiabilities)
 					if strategyHandler != nil {
 						analyst.Post("/treasuries/{id}/strategies/generate", strategyHandler.Generate)
+						analyst.Post("/treasuries/{id}/council/evaluate", strategyHandler.EvaluateCouncil)
+						analyst.Post("/treasuries/{id}/agents/evaluate", strategyHandler.EvaluateCouncil)
 					}
+				}
+
+				if strategyHandler != nil {
+					analyst.Post("/agents/evaluate", strategyHandler.EvaluateDirect)
 				}
 
 				if riskHandler != nil {

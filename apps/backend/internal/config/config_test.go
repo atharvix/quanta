@@ -81,3 +81,53 @@ func TestMaskedDatabaseURL(t *testing.T) {
 		t.Errorf("cfg.String() must not contain raw password, got: %s", cfgString)
 	}
 }
+
+func TestConfig_Validate(t *testing.T) {
+	t.Run("Valid dev config passes", func(t *testing.T) {
+		cfg := &Config{
+			Environment: "development",
+			Port:        "8080",
+			DatabaseURL: "postgres://localhost/quanta",
+			JWTSecret:   "dev-only-change-me-please",
+		}
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("expected valid config, got: %v", err)
+		}
+	})
+
+	t.Run("Production with default secret rejected", func(t *testing.T) {
+		cfg := &Config{
+			Environment: "production",
+			Port:        "8080",
+			DatabaseURL: "postgres://localhost/quanta",
+			JWTSecret:   "dev-only-change-me-please",
+		}
+		if err := cfg.Validate(); err == nil {
+			t.Fatal("expected production config with default secret to fail validation")
+		}
+	})
+
+	t.Run("Production with short secret rejected", func(t *testing.T) {
+		cfg := &Config{
+			Environment: "production",
+			Port:        "8080",
+			DatabaseURL: "postgres://localhost/quanta",
+			JWTSecret:   "short-secret-less-than-32-chars", // 31 chars
+		}
+		if err := cfg.Validate(); err == nil {
+			t.Fatal("expected production config with short secret to fail validation")
+		}
+	})
+
+	t.Run("Valid production config passes", func(t *testing.T) {
+		cfg := &Config{
+			Environment: "production",
+			Port:        "8080",
+			DatabaseURL: "postgres://localhost/quanta",
+			JWTSecret:   "this-is-a-valid-production-secret-with-32-chars", // >= 32 chars
+		}
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("expected valid production config to pass, got: %v", err)
+		}
+	})
+}

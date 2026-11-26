@@ -181,7 +181,7 @@ func TestF5_ServiceToService_LiveAIEngine_Integration(t *testing.T) {
 				"principal":            10.0,
 				"interest_rate":        0.08,
 				"maturity_months":      12,
-				"priority":              1,
+				"priority":             1,
 				"is_mandatory_reserve": true,
 			},
 		},

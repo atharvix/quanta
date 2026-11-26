@@ -24,7 +24,7 @@ func TestTreasuryRepository_PostgreSQL_Integration(t *testing.T) {
 
 	db, err := database.NewPool(ctx, dbURL)
 	if err != nil {
-		t.Fatalf("Failed to connect to PostgreSQL for integration test: %v", err)
+		t.Skipf("Skipping integration test: PostgreSQL unavailable: %v", err)
 	}
 	defer db.Close()
 
@@ -105,7 +105,7 @@ func TestStrategyRepository_PostgreSQL_Integration(t *testing.T) {
 
 	db, err := database.NewPool(ctx, dbURL)
 	if err != nil {
-		t.Fatalf("Failed to connect to PostgreSQL for integration test: %v", err)
+		t.Skipf("Skipping integration test: PostgreSQL unavailable: %v", err)
 	}
 	defer db.Close()
 

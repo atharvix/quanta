@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/atharvix/quanta/apps/backend/internal/database"
 	"github.com/atharvix/quanta/apps/backend/internal/domain"
@@ -28,10 +29,12 @@ func NewPgxAuditRepository(db *database.DB) *PgxAuditRepository {
 
 // Create inserts a new audit log record.
 func (r *PgxAuditRepository) Create(ctx context.Context, log domain.AuditLog) (*domain.AuditLog, error) {
-	pool := r.db.Pool()
-	if pool == nil {
+	if r.db == nil || r.db.Pool() == nil {
 		return nil, domain.ErrDatabaseUnavailable
 	}
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
 	query := `
 		INSERT INTO audit_logs (
@@ -45,8 +48,8 @@ func (r *PgxAuditRepository) Create(ctx context.Context, log domain.AuditLog) (*
 	`
 
 	var saved domain.AuditLog
-	err := pool.QueryRow(
-		ctx,
+	err := r.db.Pool().QueryRow(
+		timeoutCtx,
 		query,
 		log.Action,
 		log.EntityType,
@@ -71,10 +74,12 @@ func (r *PgxAuditRepository) Create(ctx context.Context, log domain.AuditLog) (*
 
 // List queries audit logs ordered newest first with optional entity_type and action filters.
 func (r *PgxAuditRepository) List(ctx context.Context, limit, offset int, entityType, action string) ([]domain.AuditLog, error) {
-	pool := r.db.Pool()
-	if pool == nil {
+	if r.db == nil || r.db.Pool() == nil {
 		return nil, domain.ErrDatabaseUnavailable
 	}
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
 	var sb strings.Builder
 	sb.WriteString(`
@@ -101,7 +106,7 @@ func (r *PgxAuditRepository) List(ctx context.Context, limit, offset int, entity
 	sb.WriteString(fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d OFFSET $%d;", argIdx, argIdx+1))
 	args = append(args, limit, offset)
 
-	rows, err := pool.Query(ctx, sb.String(), args...)
+	rows, err := r.db.Pool().Query(timeoutCtx, sb.String(), args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query audit logs: %w", err)
 	}

@@ -70,9 +70,12 @@ func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*UserR
 		return nil, &domain.ValidationError{Details: []string{"invalid email format"}}
 	}
 
-	// Validate password length
-	if !domain.ValidatePassword(input.Password) {
+	// Validate password length (min 8 chars, max 72 chars for bcrypt security)
+	if len(input.Password) < 8 {
 		return nil, &domain.ValidationError{Details: []string{"password must be at least 8 characters"}}
+	}
+	if len(input.Password) > 72 {
+		return nil, &domain.ValidationError{Details: []string{"password must not exceed 72 characters"}}
 	}
 
 	// Hash password with bcrypt (cost 10)
@@ -231,7 +234,7 @@ func (s *AuthService) generateToken(user *domain.User) (string, time.Time, error
 // Returns ErrUnauthorized for invalid, expired, or tampered tokens.
 func (s *AuthService) ValidateToken(tokenString string) (jwt.MapClaims, error) {
 	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (any, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+		if t.Method == nil || t.Method.Alg() != jwt.SigningMethodHS256.Alg() {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
 		return []byte(s.cfg.JWTSecret), nil

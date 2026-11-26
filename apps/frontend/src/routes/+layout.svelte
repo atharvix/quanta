@@ -6,11 +6,31 @@
   import { onMount } from 'svelte';
   import { token, user, logout, me } from '$lib/auth';
   import { isAdmin } from '$lib/roles';
+  import { theme } from '$lib/theme';
+  import Sidebar from '$lib/components/Sidebar.svelte';
+  import Header from '$lib/components/Header.svelte';
+  import ThemeToggle from '$lib/components/ThemeToggle.svelte';
   import type { LayoutProps } from './$types';
 
   let { children }: LayoutProps = $props();
 
+  let isCollapsed = $state(false);
+  let isMobileOpen = $state(false);
+
+  const isAuthPage = $derived(
+    page.url.pathname === '/login' || page.url.pathname === '/register'
+  );
+
   onMount(async () => {
+    theme.init();
+
+    if (browser) {
+      const savedCollapsed = localStorage.getItem('quanta_sidebar_collapsed');
+      if (savedCollapsed === 'true') {
+        isCollapsed = true;
+      }
+    }
+
     if ($token && !$user) {
       try {
         await me();
@@ -33,131 +53,89 @@
       goto('/');
     }
   });
+
+  // Close mobile drawer on route change
+  $effect(() => {
+    // depend on pathname
+    const _ = page.url.pathname;
+    isMobileOpen = false;
+  });
 </script>
 
 <svelte:head>
-  <title>QUANTA - Treasury & Balance Sheet Management</title>
+  <title>QUANTA - Autonomous Financial Treasury & Capital Optimization</title>
 </svelte:head>
 
-<div class="app-layout">
-  {#if $token && $user}
-    <header class="navbar">
-      <div class="navbar-left">
-        <a href="/" class="brand">QUANTA</a>
-        <nav class="nav-links">
-          <a href="/" class="nav-link" class:active={page.url.pathname === '/'}>Dashboard</a>
-          <a href="/treasuries" class="nav-link" class:active={page.url.pathname.startsWith('/treasuries')}>Treasuries</a>
-          {#if isAdmin($user.role)}
-            <a href="/admin/users" class="nav-link" class:active={page.url.pathname.startsWith('/admin/users')}>Users</a>
-            <a href="/admin/audit-logs" class="nav-link" class:active={page.url.pathname.startsWith('/admin/audit-logs')}>Audit Logs</a>
-          {/if}
-        </nav>
-      </div>
+<div class="quanta-shell">
+  {#if $token && $user && !isAuthPage}
+    <!-- Authenticated Enterprise Shell -->
+    <Sidebar bind:isCollapsed bind:isMobileOpen />
 
-      <div class="navbar-right">
-        <span class="user-email">{$user.email}</span>
-        <span class="badge badge-{$user.role}">{$user.role}</span>
-        <button type="button" class="btn btn-secondary btn-sm" onclick={logout}>
-          Logout
-        </button>
-      </div>
-    </header>
+    <div
+      class="shell-body"
+      class:sidebar-collapsed={isCollapsed}
+    >
+      <Header bind:isMobileOpen />
+      <main class="main-content">
+        {@render children()}
+      </main>
+    </div>
+  {:else}
+    <!-- Full-Bleed Auth & Public Mode -->
+    <div class="auth-fullscreen">
+      {@render children()}
+    </div>
   {/if}
-
-  <main class="main-content" class:auth-mode={!$token || page.url.pathname === '/login' || page.url.pathname === '/register'}>
-    {@render children()}
-  </main>
 </div>
 
 <style>
-  .app-layout {
+  .quanta-shell {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--color-bg);
+  }
+
+  /* Authenticated Shell Layout */
+  .shell-body {
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    margin-left: var(--sidebar-width);
+    transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  .navbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background-color: var(--color-surface);
-    border-bottom: 1px solid var(--color-border);
-    padding: 0.75rem 1.5rem;
-    position: sticky;
-    top: 0;
-    z-index: 50;
-  }
-
-  .navbar-left {
-    display: flex;
-    align-items: center;
-    gap: 2rem;
-  }
-
-  .brand {
-    font-size: 1.125rem;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    color: var(--color-text);
-    text-decoration: none;
-  }
-
-  .brand:hover {
-    text-decoration: none;
-  }
-
-  .nav-links {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-  }
-
-  .nav-link {
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--color-text-muted);
-    text-decoration: none;
-    padding: 0.375rem 0.625rem;
-    border-radius: var(--radius);
-    transition: color 0.15s ease, background-color 0.15s ease;
-  }
-
-  .nav-link:hover {
-    color: var(--color-text);
-    background-color: var(--color-bg);
-    text-decoration: none;
-  }
-
-  .nav-link.active {
-    color: var(--color-primary);
-    background-color: var(--color-badge-analyst-bg);
-  }
-
-  .navbar-right {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-  }
-
-  .user-email {
-    font-size: 0.875rem;
-    color: var(--color-text-muted);
-  }
-
-  .btn-sm {
-    padding: 0.35rem 0.75rem;
-    font-size: 0.8125rem;
+  .shell-body.sidebar-collapsed {
+    margin-left: var(--sidebar-collapsed-width);
   }
 
   .main-content {
     flex: 1;
-    display: flex;
-    flex-direction: column;
+    padding: 1.75rem 2rem 3rem 2rem;
+    max-width: 1600px;
+    width: 100%;
+    margin: 0 auto;
+    box-sizing: border-box;
   }
 
-  .main-content.auth-mode {
-    align-items: center;
-    justify-content: center;
-    padding: 2rem 1rem;
+  /* Auth Fullscreen Mode */
+  .auth-fullscreen {
+    min-height: 100vh;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--color-bg);
+  }
+
+  /* Responsive Breakpoints */
+  @media (max-width: 1024px) {
+    .shell-body,
+    .shell-body.sidebar-collapsed {
+      margin-left: 0;
+    }
+
+    .main-content {
+      padding: 1.25rem 1rem 2rem 1rem;
+    }
   }
 </style>

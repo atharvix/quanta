@@ -63,6 +63,14 @@ func (d *dummyTreasuryRepo) GetByID(ctx context.Context, id string) (*domain.Tre
 func (d *dummyTreasuryRepo) Create(ctx context.Context, input domain.CreateTreasuryInput) (*domain.Treasury, error) {
 	return &domain.Treasury{ID: "t-1", Name: input.Name, TotalCapital: input.TotalCapital}, nil
 }
+func (d *dummyTreasuryRepo) Update(ctx context.Context, id string, input domain.UpdateTreasuryInput) (*domain.Treasury, error) {
+	name := "Updated Treasury"
+	if input.Name != nil {
+		name = *input.Name
+	}
+	ownerID := "a-1"
+	return &domain.Treasury{ID: id, Name: name, TotalCapital: 1000000, OwnerID: &ownerID}, nil
+}
 
 type mockAIClientForRouter struct{}
 
@@ -78,6 +86,9 @@ func (m *mockAIClientForRouter) AnalyzeRisk(ctx context.Context, req domain.AIRi
 }
 func (m *mockAIClientForRouter) AdversarialStressTest(ctx context.Context, problem any) (*domain.AdversarialStressTestResult, error) {
 	return &domain.AdversarialStressTestResult{WorstMarketShock: "Status Quo"}, nil
+}
+func (m *mockAIClientForRouter) EvaluateAgents(ctx context.Context, problem any) (*domain.CouncilDeliberationSummary, error) {
+	return &domain.CouncilDeliberationSummary{ConsensusReached: true}, nil
 }
 
 func generateTestToken(secret, sub, email string, role domain.Role) string {

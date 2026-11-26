@@ -32,6 +32,18 @@ var AllowedMarketStates = map[string]bool{
 	"liquidity_crunch": true,
 }
 
+// AllowedAssetTypes enumerates canonical asset classifications strictly enforced by QUANTA
+// and Member 1's Python AI Decision Engine.
+var AllowedAssetTypes = map[string]bool{
+	"cash":        true,
+	"gov_bond":    true,
+	"corp_bond":   true,
+	"equity":      true,
+	"real_estate": true,
+	"commodity":   true,
+	"other":       true,
+}
+
 // Asset models a capital allocation opportunity (e.g. government bond, commercial paper).
 type Asset struct {
 	ID             string                 `json:"id"`
@@ -94,6 +106,12 @@ func (f *FinancialProblem) ApplyDefaults() {
 	if strings.TrimSpace(f.MarketState) == "" {
 		f.MarketState = DefaultMarketState
 	}
+	if f.Liabilities == nil {
+		f.Liabilities = []Liability{}
+	}
+	if f.Constraints == nil {
+		f.Constraints = []Constraint{}
+	}
 }
 
 // Validate executes strict business validation matching shared/schemas/financial_problem.json.
@@ -131,8 +149,11 @@ func (f *FinancialProblem) Validate() []string {
 			if strings.TrimSpace(a.Name) == "" {
 				errs = append(errs, fmt.Sprintf("%s.name is required", idx))
 			}
-			if strings.TrimSpace(a.AssetType) == "" {
+			trimmedType := strings.ToLower(strings.TrimSpace(a.AssetType))
+			if trimmedType == "" {
 				errs = append(errs, fmt.Sprintf("%s.asset_type is required", idx))
+			} else if !AllowedAssetTypes[trimmedType] {
+				errs = append(errs, fmt.Sprintf("%s.asset_type '%s' is invalid, allowed values: [cash, gov_bond, corp_bond, equity, real_estate, commodity, other]", idx, a.AssetType))
 			}
 			if a.ExpectedReturn < -1.0 || a.ExpectedReturn > 5.0 {
 				errs = append(errs, fmt.Sprintf("%s.expected_return must be between -1.0 and 5.0", idx))
@@ -214,5 +235,59 @@ func (f *FinancialProblem) Validate() []string {
 		errs = append(errs, fmt.Sprintf("market_state '%s' is invalid, allowed values: [normal, bull, bear, high_volatility, liquidity_crunch]", f.MarketState))
 	}
 
+	return errs
+}
+
+// ValidateAsset validates a single candidate investment asset against canonical bounds.
+func ValidateAsset(a Asset) []string {
+	var errs []string
+	if strings.TrimSpace(a.ID) == "" {
+		errs = append(errs, "id is required")
+	}
+	if strings.TrimSpace(a.Name) == "" {
+		errs = append(errs, "name is required")
+	}
+	trimmedType := strings.ToLower(strings.TrimSpace(a.AssetType))
+	if trimmedType == "" {
+		errs = append(errs, "asset_type is required")
+	} else if !AllowedAssetTypes[trimmedType] {
+		errs = append(errs, fmt.Sprintf("asset_type '%s' is invalid, allowed values: [cash, gov_bond, corp_bond, equity, real_estate, commodity, other]", a.AssetType))
+	}
+	if a.ExpectedReturn < -1.0 || a.ExpectedReturn > 5.0 {
+		errs = append(errs, "expected_return must be between -1.0 and 5.0")
+	}
+	if a.Risk < 0.0 || a.Risk > 1.0 {
+		errs = append(errs, "risk must be between 0.0 and 1.0")
+	}
+	if a.Liquidity < 0.0 || a.Liquidity > 1.0 {
+		errs = append(errs, "liquidity must be between 0.0 and 1.0")
+	}
+	if a.Cost < 0.0 {
+		errs = append(errs, "cost cannot be negative")
+	}
+	if a.Volatility < 0.0 {
+		errs = append(errs, "volatility cannot be negative")
+	}
+	return errs
+}
+
+// ValidateLiability validates a single debt obligation against business rules.
+func ValidateLiability(l Liability) []string {
+	var errs []string
+	if strings.TrimSpace(l.ID) == "" {
+		errs = append(errs, "id is required")
+	}
+	if strings.TrimSpace(l.Name) == "" {
+		errs = append(errs, "name is required")
+	}
+	if l.Principal < 0.0 {
+		errs = append(errs, "principal cannot be negative")
+	}
+	if l.InterestRate < 0.0 {
+		errs = append(errs, "interest_rate cannot be negative")
+	}
+	if l.Priority < 0 {
+		errs = append(errs, "priority cannot be negative")
+	}
 	return errs
 }

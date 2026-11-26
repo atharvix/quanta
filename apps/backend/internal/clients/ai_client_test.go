@@ -12,32 +12,50 @@ import (
 	"github.com/atharvix/quanta/apps/backend/internal/domain"
 )
 
+type roundTripFunc func(req *http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func newMockAIClient(handler http.HandlerFunc, timeout ...time.Duration) *HTTPAIClient {
+	t := 60 * time.Second
+	if len(timeout) > 0 {
+		t = timeout[0]
+	}
+	transport := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		rec := httptest.NewRecorder()
+		handler(rec, req)
+		return rec.Result(), nil
+	})
+	return NewHTTPAIClientWithClient("http://ai-engine.local", &http.Client{
+		Transport: transport,
+		Timeout:   t,
+	})
+}
+
 func TestHTTPAIClient_Health(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("Health 200 OK", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path != "/health" {
 				t.Errorf("expected /health path, got %s", r.URL.Path)
 			}
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"status":"healthy"}`))
-		}))
-		defer ts.Close()
+		})
 
-		client := NewHTTPAIClient(ts.URL)
 		if err := client.Health(ctx); err != nil {
 			t.Fatalf("expected nil error, got: %v", err)
 		}
 	})
 
 	t.Run("Health 500 Server Error", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
-		}))
-		defer ts.Close()
+		})
 
-		client := NewHTTPAIClient(ts.URL)
 		err := client.Health(ctx)
 		if !errors.Is(err, domain.ErrUpstreamUnavailable) {
 			t.Fatalf("expected ErrUpstreamUnavailable, got: %v", err)
@@ -80,17 +98,15 @@ func TestHTTPAIClient_GenerateStrategy(t *testing.T) {
 			]
 		}`
 
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path != "/api/v1/strategy/generate" {
 				t.Errorf("expected /api/v1/strategy/generate, got %s", r.URL.Path)
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(responseJSON))
-		}))
-		defer ts.Close()
+		})
 
-		client := NewHTTPAIClient(ts.URL)
 		res, err := client.GenerateStrategy(ctx, map[string]any{"capital": 100}, "astar")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -108,13 +124,11 @@ func TestHTTPAIClient_GenerateStrategy(t *testing.T) {
 	})
 
 	t.Run("Upstream 500 maps to ErrUpstreamUnavailable", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = w.Write([]byte(`{"detail":"internal crash"}`))
-		}))
-		defer ts.Close()
+		})
 
-		client := NewHTTPAIClient(ts.URL)
 		_, err := client.GenerateStrategy(ctx, nil, "astar")
 		if !errors.Is(err, domain.ErrUpstreamUnavailable) {
 			t.Fatalf("expected ErrUpstreamUnavailable, got: %v", err)
@@ -122,14 +136,20 @@ func TestHTTPAIClient_GenerateStrategy(t *testing.T) {
 	})
 
 	t.Run("Client timeout maps to ErrUpstreamUnavailable", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			time.Sleep(50 * time.Millisecond)
-			w.WriteHeader(http.StatusOK)
-		}))
-		defer ts.Close()
-
-		client := NewHTTPAIClient(ts.URL)
-		client.client.Timeout = 10 * time.Millisecond
+		slowTransport := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			select {
+			case <-time.After(50 * time.Millisecond):
+				rec := httptest.NewRecorder()
+				rec.WriteHeader(http.StatusOK)
+				return rec.Result(), nil
+			case <-req.Context().Done():
+				return nil, req.Context().Err()
+			}
+		})
+		client := NewHTTPAIClientWithClient("http://ai-engine.local", &http.Client{
+			Transport: slowTransport,
+			Timeout:   10 * time.Millisecond,
+		})
 
 		_, err := client.GenerateStrategy(ctx, nil, "astar")
 		if !errors.Is(err, domain.ErrUpstreamUnavailable) {
@@ -138,13 +158,11 @@ func TestHTTPAIClient_GenerateStrategy(t *testing.T) {
 	})
 
 	t.Run("Bad JSON response returns decode error", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{not-json`))
-		}))
-		defer ts.Close()
+		})
 
-		client := NewHTTPAIClient(ts.URL)
 		_, err := client.GenerateStrategy(ctx, nil, "astar")
 		if err == nil || !strings.Contains(err.Error(), "failed to decode") {
 			t.Fatalf("expected decode error, got: %v", err)
@@ -158,17 +176,15 @@ func TestHTTPAIClient_CompareSearches(t *testing.T) {
 	t.Run("Success 200 with raw JSON pass-through", func(t *testing.T) {
 		compareJSON := `{"problem_summary":{"capital":100},"results":{"astar":{"success":true}}}`
 
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path != "/api/v1/search/compare" {
 				t.Errorf("expected /api/v1/search/compare, got %s", r.URL.Path)
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(compareJSON))
-		}))
-		defer ts.Close()
+		})
 
-		client := NewHTTPAIClient(ts.URL)
 		raw, err := client.CompareSearches(ctx, map[string]any{"capital": 100})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -179,13 +195,11 @@ func TestHTTPAIClient_CompareSearches(t *testing.T) {
 	})
 
 	t.Run("Upstream 500 maps to ErrUpstreamUnavailable", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = w.Write([]byte(`{"detail":"crash"}`))
-		}))
-		defer ts.Close()
+		})
 
-		client := NewHTTPAIClient(ts.URL)
 		_, err := client.CompareSearches(ctx, nil)
 		if !errors.Is(err, domain.ErrUpstreamUnavailable) {
 			t.Fatalf("expected ErrUpstreamUnavailable, got: %v", err)
@@ -229,17 +243,15 @@ func TestHTTPAIClient_AnalyzeRisk(t *testing.T) {
 			}
 		}`
 
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path != "/api/v1/risk/analyze" {
 				t.Errorf("expected /api/v1/risk/analyze, got %s", r.URL.Path)
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(riskJSON))
-		}))
-		defer ts.Close()
+		})
 
-		client := NewHTTPAIClient(ts.URL)
 		req := domain.AIRiskAnalyzeRequest{
 			State: domain.FinancialState{
 				TotalCapital: 100.0,
@@ -270,12 +282,10 @@ func TestHTTPAIClient_AnalyzeRisk(t *testing.T) {
 	})
 
 	t.Run("Upstream 502/500 maps to ErrUpstreamUnavailable", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadGateway)
-		}))
-		defer ts.Close()
+		})
 
-		client := NewHTTPAIClient(ts.URL)
 		_, err := client.AnalyzeRisk(ctx, domain.AIRiskAnalyzeRequest{})
 		if !errors.Is(err, domain.ErrUpstreamUnavailable) {
 			t.Fatalf("expected ErrUpstreamUnavailable, got: %v", err)
@@ -283,13 +293,11 @@ func TestHTTPAIClient_AnalyzeRisk(t *testing.T) {
 	})
 
 	t.Run("Input rejected with 400 detail", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte(`{"detail":"invalid financial state allocations"}`))
-		}))
-		defer ts.Close()
+		})
 
-		client := NewHTTPAIClient(ts.URL)
 		_, err := client.AnalyzeRisk(ctx, domain.AIRiskAnalyzeRequest{})
 		if err == nil || !strings.Contains(err.Error(), "invalid financial state allocations") {
 			t.Fatalf("expected rejection detail in error, got: %v", err)
@@ -297,13 +305,11 @@ func TestHTTPAIClient_AnalyzeRisk(t *testing.T) {
 	})
 
 	t.Run("Upstream 422 Unprocessable Entity with detail extraction", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusUnprocessableEntity)
 			_, _ = w.Write([]byte(`{"detail":"unprocessable risk payload"}`))
-		}))
-		defer ts.Close()
+		})
 
-		client := NewHTTPAIClient(ts.URL)
 		_, err := client.AnalyzeRisk(ctx, domain.AIRiskAnalyzeRequest{})
 		if err == nil || !strings.Contains(err.Error(), "unprocessable risk payload") {
 			t.Fatalf("expected 422 detail in error, got: %v", err)
@@ -311,14 +317,20 @@ func TestHTTPAIClient_AnalyzeRisk(t *testing.T) {
 	})
 
 	t.Run("Client timeout maps to ErrUpstreamUnavailable", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			time.Sleep(50 * time.Millisecond)
-			w.WriteHeader(http.StatusOK)
-		}))
-		defer ts.Close()
-
-		client := NewHTTPAIClient(ts.URL)
-		client.client.Timeout = 10 * time.Millisecond
+		slowTransport := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			select {
+			case <-time.After(50 * time.Millisecond):
+				rec := httptest.NewRecorder()
+				rec.WriteHeader(http.StatusOK)
+				return rec.Result(), nil
+			case <-req.Context().Done():
+				return nil, req.Context().Err()
+			}
+		})
+		client := NewHTTPAIClientWithClient("http://ai-engine.local", &http.Client{
+			Transport: slowTransport,
+			Timeout:   10 * time.Millisecond,
+		})
 
 		_, err := client.AnalyzeRisk(ctx, domain.AIRiskAnalyzeRequest{})
 		if !errors.Is(err, domain.ErrUpstreamUnavailable) {
@@ -327,7 +339,10 @@ func TestHTTPAIClient_AnalyzeRisk(t *testing.T) {
 	})
 
 	t.Run("Connection failure to unreachable server maps to ErrUpstreamUnavailable", func(t *testing.T) {
-		client := NewHTTPAIClient("http://127.0.0.1:59999") // closed port
+		failTransport := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return nil, errors.New("dial tcp 127.0.0.1:59999: connectex: connection refused")
+		})
+		client := NewHTTPAIClientWithClient("http://unreachable.local", &http.Client{Transport: failTransport})
 		_, err := client.AnalyzeRisk(ctx, domain.AIRiskAnalyzeRequest{})
 		if !errors.Is(err, domain.ErrUpstreamUnavailable) {
 			t.Fatalf("expected ErrUpstreamUnavailable on connection failure, got: %v", err)
@@ -335,13 +350,11 @@ func TestHTTPAIClient_AnalyzeRisk(t *testing.T) {
 	})
 
 	t.Run("Malformed JSON response returns decode error", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{invalid-json`))
-		}))
-		defer ts.Close()
+		})
 
-		client := NewHTTPAIClient(ts.URL)
 		_, err := client.AnalyzeRisk(ctx, domain.AIRiskAnalyzeRequest{})
 		if err == nil || !strings.Contains(err.Error(), "failed to decode") {
 			t.Fatalf("expected decode error, got: %v", err)
@@ -349,12 +362,10 @@ func TestHTTPAIClient_AnalyzeRisk(t *testing.T) {
 	})
 
 	t.Run("Unexpected HTTP status 404 maps to ErrUpstreamUnavailable", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
-		}))
-		defer ts.Close()
+		})
 
-		client := NewHTTPAIClient(ts.URL)
 		_, err := client.AnalyzeRisk(ctx, domain.AIRiskAnalyzeRequest{})
 		if !errors.Is(err, domain.ErrUpstreamUnavailable) {
 			t.Fatalf("expected ErrUpstreamUnavailable for 404, got: %v", err)
@@ -376,17 +387,15 @@ func TestHTTPAIClient_AdversarialStressTest(t *testing.T) {
 			"explanation": "Adversarial search evaluated 48 nodes with 12 pruned branches."
 		}`
 
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path != "/api/v1/stress-test/adversarial" {
 				t.Errorf("expected /api/v1/stress-test/adversarial, got %s", r.URL.Path)
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(stressJSON))
-		}))
-		defer ts.Close()
+		})
 
-		client := NewHTTPAIClient(ts.URL)
 		problem := domain.FinancialProblem{
 			Capital:       100.0,
 			RiskTolerance: 0.50,
@@ -409,12 +418,10 @@ func TestHTTPAIClient_AdversarialStressTest(t *testing.T) {
 	})
 
 	t.Run("Upstream 500 maps to ErrUpstreamUnavailable", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
-		}))
-		defer ts.Close()
+		})
 
-		client := NewHTTPAIClient(ts.URL)
 		_, err := client.AdversarialStressTest(ctx, nil)
 		if !errors.Is(err, domain.ErrUpstreamUnavailable) {
 			t.Fatalf("expected ErrUpstreamUnavailable, got: %v", err)
@@ -422,13 +429,11 @@ func TestHTTPAIClient_AdversarialStressTest(t *testing.T) {
 	})
 
 	t.Run("Input rejected with 400 detail", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte(`{"detail":"invalid stress problem constraints"}`))
-		}))
-		defer ts.Close()
+		})
 
-		client := NewHTTPAIClient(ts.URL)
 		_, err := client.AdversarialStressTest(ctx, nil)
 		if err == nil || !strings.Contains(err.Error(), "invalid stress problem constraints") {
 			t.Fatalf("expected rejection detail in error, got: %v", err)
@@ -436,13 +441,11 @@ func TestHTTPAIClient_AdversarialStressTest(t *testing.T) {
 	})
 
 	t.Run("Upstream 422 Unprocessable Entity with detail extraction", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusUnprocessableEntity)
 			_, _ = w.Write([]byte(`{"detail":"unprocessable stress problem"}`))
-		}))
-		defer ts.Close()
+		})
 
-		client := NewHTTPAIClient(ts.URL)
 		_, err := client.AdversarialStressTest(ctx, nil)
 		if err == nil || !strings.Contains(err.Error(), "unprocessable stress problem") {
 			t.Fatalf("expected 422 detail in error, got: %v", err)
@@ -450,14 +453,20 @@ func TestHTTPAIClient_AdversarialStressTest(t *testing.T) {
 	})
 
 	t.Run("Client timeout maps to ErrUpstreamUnavailable", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			time.Sleep(50 * time.Millisecond)
-			w.WriteHeader(http.StatusOK)
-		}))
-		defer ts.Close()
-
-		client := NewHTTPAIClient(ts.URL)
-		client.client.Timeout = 10 * time.Millisecond
+		slowTransport := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			select {
+			case <-time.After(50 * time.Millisecond):
+				rec := httptest.NewRecorder()
+				rec.WriteHeader(http.StatusOK)
+				return rec.Result(), nil
+			case <-req.Context().Done():
+				return nil, req.Context().Err()
+			}
+		})
+		client := NewHTTPAIClientWithClient("http://ai-engine.local", &http.Client{
+			Transport: slowTransport,
+			Timeout:   10 * time.Millisecond,
+		})
 
 		_, err := client.AdversarialStressTest(ctx, nil)
 		if !errors.Is(err, domain.ErrUpstreamUnavailable) {
@@ -466,7 +475,10 @@ func TestHTTPAIClient_AdversarialStressTest(t *testing.T) {
 	})
 
 	t.Run("Connection failure to unreachable server maps to ErrUpstreamUnavailable", func(t *testing.T) {
-		client := NewHTTPAIClient("http://127.0.0.1:59999") // closed port
+		failTransport := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return nil, errors.New("dial tcp 127.0.0.1:59999: connectex: connection refused")
+		})
+		client := NewHTTPAIClientWithClient("http://unreachable.local", &http.Client{Transport: failTransport})
 		_, err := client.AdversarialStressTest(ctx, nil)
 		if !errors.Is(err, domain.ErrUpstreamUnavailable) {
 			t.Fatalf("expected ErrUpstreamUnavailable on connection failure, got: %v", err)
@@ -474,13 +486,11 @@ func TestHTTPAIClient_AdversarialStressTest(t *testing.T) {
 	})
 
 	t.Run("Malformed JSON response returns decode error", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{broken-json`))
-		}))
-		defer ts.Close()
+		})
 
-		client := NewHTTPAIClient(ts.URL)
 		_, err := client.AdversarialStressTest(ctx, nil)
 		if err == nil || !strings.Contains(err.Error(), "failed to decode") {
 			t.Fatalf("expected decode error, got: %v", err)
@@ -488,15 +498,189 @@ func TestHTTPAIClient_AdversarialStressTest(t *testing.T) {
 	})
 
 	t.Run("Unexpected HTTP status 404 maps to ErrUpstreamUnavailable", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
-		}))
-		defer ts.Close()
+		})
 
-		client := NewHTTPAIClient(ts.URL)
 		_, err := client.AdversarialStressTest(ctx, nil)
 		if !errors.Is(err, domain.ErrUpstreamUnavailable) {
 			t.Fatalf("expected ErrUpstreamUnavailable for 404, got: %v", err)
+		}
+	})
+}
+
+func TestHTTPAIClient_EvaluateAgents(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("Success 200 with valid Council Deliberation summary", func(t *testing.T) {
+		summaryJSON := `{
+			"treasury_opinion": {
+				"agent_name": "Chief Treasury Agent",
+				"role": "treasury",
+				"is_acceptable": true,
+				"score": 0.58,
+				"findings": ["Unallocated treasury cash balance: ₹0.00 Cr."],
+				"suggested_actions": []
+			},
+			"risk_opinion": {
+				"agent_name": "Chief Risk Officer Agent",
+				"role": "risk",
+				"is_acceptable": true,
+				"score": 0.583,
+				"findings": ["Base asset risk is 0.1510 across deployed capital."],
+				"suggested_actions": []
+			},
+			"compliance_opinion": {
+				"agent_name": "Regulatory Compliance Agent",
+				"role": "compliance",
+				"is_acceptable": true,
+				"score": 1.0,
+				"findings": ["Total balance sheet sum ₹100.00 Cr matches budget ₹100.00 Cr"],
+				"suggested_actions": []
+			},
+			"consensus_reached": true,
+			"recommended_strategy": {
+				"actions": [],
+				"total_allocated": 90.0,
+				"expected_return": 0.087,
+				"risk_score": 0.1326,
+				"liquidity_ratio": 0.91,
+				"objective_value": 0.08,
+				"is_compliant": true,
+				"explanation": "Optimal strategy synthesized via A* Search"
+			},
+			"search_metrics": {
+				"algorithm": "A* Search",
+				"success": true,
+				"objective_value": 0.08,
+				"expected_return": 0.087,
+				"risk_score": 0.1326,
+				"liquidity_ratio": 0.91,
+				"states_explored": 50,
+				"execution_time_ms": 8.51,
+				"depth": 10
+			}
+		}`
+
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/api/v1/agents/evaluate" {
+				t.Errorf("expected /api/v1/agents/evaluate, got %s", r.URL.Path)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(summaryJSON))
+		})
+
+		problem := domain.FinancialProblem{
+			Capital: 100.0,
+		}
+
+		res, err := client.EvaluateAgents(ctx, problem)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if !res.ConsensusReached {
+			t.Errorf("expected consensus_reached to be true")
+		}
+		if res.TreasuryOpinion.AgentName != "Chief Treasury Agent" {
+			t.Errorf("expected Chief Treasury Agent, got %s", res.TreasuryOpinion.AgentName)
+		}
+		if res.RiskOpinion.Score != 0.583 {
+			t.Errorf("expected risk score 0.583, got %f", res.RiskOpinion.Score)
+		}
+		if res.ComplianceOpinion.Role != domain.AgentRoleCompliance {
+			t.Errorf("expected compliance role, got %s", res.ComplianceOpinion.Role)
+		}
+		if res.RecommendedStrategy.Explanation != "Optimal strategy synthesized via A* Search" {
+			t.Errorf("unexpected explanation: %s", res.RecommendedStrategy.Explanation)
+		}
+	})
+
+	t.Run("Upstream 500 maps to ErrUpstreamUnavailable", func(t *testing.T) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		})
+
+		_, err := client.EvaluateAgents(ctx, nil)
+		if !errors.Is(err, domain.ErrUpstreamUnavailable) {
+			t.Fatalf("expected ErrUpstreamUnavailable, got: %v", err)
+		}
+	})
+
+	t.Run("Input rejected with 400 detail", func(t *testing.T) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"detail":"invalid council problem specification"}`))
+		})
+
+		_, err := client.EvaluateAgents(ctx, nil)
+		if err == nil || !strings.Contains(err.Error(), "invalid council problem specification") {
+			t.Fatalf("expected rejection detail in error, got: %v", err)
+		}
+	})
+}
+
+func TestReadBoundedResponseBody(t *testing.T) {
+	t.Run("Response within limit succeeds", func(t *testing.T) {
+		input := "valid small response"
+		data, err := readBoundedResponseBody(strings.NewReader(input), 100)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if string(data) != input {
+			t.Errorf("expected %q, got %q", input, string(data))
+		}
+	})
+
+	t.Run("Response exactly at limit succeeds", func(t *testing.T) {
+		input := "1234567890"
+		data, err := readBoundedResponseBody(strings.NewReader(input), 10)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(data) != 10 {
+			t.Errorf("expected 10 bytes, got %d", len(data))
+		}
+	})
+
+	t.Run("Response exceeding limit returns ErrUpstreamUnavailable with size message", func(t *testing.T) {
+		input := "12345678901" // 11 bytes with 10 byte limit
+		_, err := readBoundedResponseBody(strings.NewReader(input), 10)
+		if err == nil {
+			t.Fatal("expected error for response exceeding limit, got nil")
+		}
+		if !errors.Is(err, domain.ErrUpstreamUnavailable) {
+			t.Errorf("expected ErrUpstreamUnavailable, got: %v", err)
+		}
+		if !strings.Contains(err.Error(), "upstream response exceeded maximum allowed size of 10 bytes") {
+			t.Errorf("expected descriptive size error, got: %v", err)
+		}
+	})
+}
+
+func TestHTTPAIClient_ResponseLimits(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("Oversized response body returns ErrUpstreamUnavailable with size description", func(t *testing.T) {
+		client := newMockAIClient(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			// Write slightly more than maxResponseBodyBytes
+			chunk := make([]byte, 1024*1024) // 1MB chunk
+			for i := 0; i < 11; i++ {        // 11MB total > 10MB
+				_, _ = w.Write(chunk)
+			}
+		})
+
+		_, err := client.GenerateStrategy(ctx, map[string]any{"capital": 100}, "astar")
+		if err == nil {
+			t.Fatal("expected error on oversized response, got nil")
+		}
+		if !errors.Is(err, domain.ErrUpstreamUnavailable) {
+			t.Errorf("expected ErrUpstreamUnavailable, got: %v", err)
+		}
+		if !strings.Contains(err.Error(), "exceeded maximum allowed size") {
+			t.Errorf("expected message to mention size limit, got: %v", err)
 		}
 	})
 }

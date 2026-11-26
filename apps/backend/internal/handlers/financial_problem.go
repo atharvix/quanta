@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -57,6 +58,10 @@ func (h *FinancialProblemHandler) Create(w http.ResponseWriter, r *http.Request)
 			WriteError(w, http.StatusNotFound, "treasury not found")
 			return
 		}
+		if errors.Is(err, domain.ErrForbidden) {
+			WriteError(w, http.StatusForbidden, "forbidden: access to this treasury is restricted")
+			return
+		}
 		if errors.Is(err, domain.ErrUpstreamUnavailable) {
 			WriteError(w, http.StatusBadGateway, "upstream AI decision engine unavailable")
 			return
@@ -69,7 +74,8 @@ func (h *FinancialProblemHandler) Create(w http.ResponseWriter, r *http.Request)
 			WriteError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		WriteError(w, http.StatusInternalServerError, "internal server error: "+err.Error())
+		log.Printf("[ERROR] Failed to create financial problem: %v", err)
+		WriteError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -88,6 +94,10 @@ func (h *FinancialProblemHandler) GetByID(w http.ResponseWriter, r *http.Request
 		}
 		if errors.Is(err, domain.ErrNotFound) {
 			WriteError(w, http.StatusNotFound, "financial problem not found")
+			return
+		}
+		if errors.Is(err, domain.ErrForbidden) {
+			WriteError(w, http.StatusForbidden, "forbidden: insufficient permissions for this financial problem")
 			return
 		}
 		if errors.Is(err, domain.ErrDatabaseUnavailable) {
@@ -133,6 +143,10 @@ func (h *FinancialProblemHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 		if errors.Is(err, domain.ErrInvalidPagination) {
 			WriteError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if errors.Is(err, domain.ErrForbidden) {
+			WriteError(w, http.StatusForbidden, err.Error())
 			return
 		}
 		if errors.Is(err, domain.ErrDatabaseUnavailable) {

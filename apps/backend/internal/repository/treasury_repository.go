@@ -4,6 +4,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/atharvix/quanta/apps/backend/internal/database"
@@ -16,6 +17,7 @@ type TreasuryRepository interface {
 	List(ctx context.Context, limit, offset int) ([]domain.Treasury, error)
 	GetByID(ctx context.Context, id string) (*domain.Treasury, error)
 	Create(ctx context.Context, input domain.CreateTreasuryInput) (*domain.Treasury, error)
+	Update(ctx context.Context, id string, input domain.UpdateTreasuryInput) (*domain.Treasury, error)
 }
 
 // PgxTreasuryRepository implements TreasuryRepository using pgxpool parameterized queries.
@@ -151,6 +153,71 @@ func (r *PgxTreasuryRepository) Create(ctx context.Context, input domain.CreateT
 		&t.OwnerID,
 	)
 	if err != nil {
+		return nil, err
+	}
+
+	return &t, nil
+}
+
+// Update updates existing treasury metadata using parameterized queries and returns the updated entity.
+func (r *PgxTreasuryRepository) Update(ctx context.Context, id string, input domain.UpdateTreasuryInput) (*domain.Treasury, error) {
+	if r.db == nil || r.db.Pool() == nil {
+		return nil, domain.ErrDatabaseUnavailable
+	}
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	var nameVal *string
+	if input.Name != nil {
+		trimmed := strings.TrimSpace(*input.Name)
+		nameVal = &trimmed
+	}
+
+	var currencyVal *string
+	if input.BaseCurrency != nil {
+		trimmed := strings.ToUpper(strings.TrimSpace(*input.BaseCurrency))
+		currencyVal = &trimmed
+	}
+
+	const query = `
+		UPDATE corporate_treasuries
+		SET
+			name = COALESCE($2, name),
+			base_currency = COALESCE($3, base_currency),
+			total_capital = COALESCE($4, total_capital),
+			risk_tolerance = COALESCE($5, risk_tolerance),
+			min_liquidity_ratio = COALESCE($6, min_liquidity_ratio),
+			updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1
+		RETURNING id::text, name, base_currency, total_capital, risk_tolerance, min_liquidity_ratio, created_at, updated_at, owner_id::text;
+	`
+
+	var t domain.Treasury
+	err := r.db.Pool().QueryRow(
+		timeoutCtx,
+		query,
+		id,
+		nameVal,
+		currencyVal,
+		input.TotalCapital,
+		input.RiskTolerance,
+		input.MinLiquidityRatio,
+	).Scan(
+		&t.ID,
+		&t.Name,
+		&t.BaseCurrency,
+		&t.TotalCapital,
+		&t.RiskTolerance,
+		&t.MinLiquidityRatio,
+		&t.CreatedAt,
+		&t.UpdatedAt,
+		&t.OwnerID,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
 	}
 

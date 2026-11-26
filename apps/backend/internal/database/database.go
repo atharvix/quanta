@@ -136,9 +136,6 @@ func (d *DB) StartBackgroundRetry(ctx context.Context, interval time.Duration) {
 
 				if err == nil {
 					log.Println("[INFO] database connected after retry")
-					if migErr := RunMigrations(ctx, d.Pool()); migErr != nil {
-						log.Printf("[ERROR] Database migrations failed after retry: %v", migErr)
-					}
 				}
 			}
 		}

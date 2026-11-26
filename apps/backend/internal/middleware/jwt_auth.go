@@ -45,7 +45,7 @@ func JWTAuth(authSvc *service.AuthService) func(http.Handler) http.Handler {
 			email, _ := claims["email"].(string)
 			role, _ := claims["role"].(string)
 
-			if sub == "" || email == "" || role == "" {
+			if sub == "" || email == "" || role == "" || !domain.Role(role).IsValid() {
 				handlers.WriteError(w, http.StatusUnauthorized, "unauthorized")
 				return
 			}

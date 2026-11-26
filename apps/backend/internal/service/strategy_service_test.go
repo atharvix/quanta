@@ -46,6 +46,7 @@ type MockAIClient struct {
 	compareSearchesFn       func(ctx context.Context, problem any) (json.RawMessage, error)
 	analyzeRiskFn           func(ctx context.Context, req domain.AIRiskAnalyzeRequest) (*domain.AIRiskAnalyzeResponse, error)
 	adversarialStressTestFn func(ctx context.Context, problem any) (*domain.AdversarialStressTestResult, error)
+	evaluateAgentsFn        func(ctx context.Context, problem any) (*domain.CouncilDeliberationSummary, error)
 }
 
 func (m *MockAIClient) Health(ctx context.Context) error {
@@ -79,6 +80,13 @@ func (m *MockAIClient) AnalyzeRisk(ctx context.Context, req domain.AIRiskAnalyze
 func (m *MockAIClient) AdversarialStressTest(ctx context.Context, problem any) (*domain.AdversarialStressTestResult, error) {
 	if m.adversarialStressTestFn != nil {
 		return m.adversarialStressTestFn(ctx, problem)
+	}
+	return nil, nil
+}
+
+func (m *MockAIClient) EvaluateAgents(ctx context.Context, problem any) (*domain.CouncilDeliberationSummary, error) {
+	if m.evaluateAgentsFn != nil {
+		return m.evaluateAgentsFn(ctx, problem)
 	}
 	return nil, nil
 }
@@ -364,6 +372,355 @@ func TestStrategyService_GenerateStrategy(t *testing.T) {
 		}
 		if resp.ExpectedReturn != 0.0825 {
 			t.Errorf("expected return 0.0825, got %f", resp.ExpectedReturn)
+		}
+	})
+}
+
+func TestStrategyService_Authorization_ReadPaths(t *testing.T) {
+	ownerID := "user-owner-123"
+	nonOwnerID := "user-analyst-456"
+	adminID := "user-admin-789"
+	validTreasuryID := "123e4567-e89b-12d3-a456-426614174000"
+	validLogID := "223e4567-e89b-12d3-a456-426614174000"
+
+	treasuryRepo := &MockTreasuryRepository{
+		getByIDFn: func(ctx context.Context, id string) (*domain.Treasury, error) {
+			return &domain.Treasury{
+				ID:        validTreasuryID,
+				Name:      "Owned Corp",
+				OwnerID:   &ownerID,
+				CreatedAt: time.Now(),
+			}, nil
+		},
+	}
+	stratRepo := &MockStrategyRepository{
+		getLogByIDFn: func(ctx context.Context, id string) (*domain.StrategyExecutionLog, error) {
+			return &domain.StrategyExecutionLog{
+				ID:         id,
+				TreasuryID: validTreasuryID,
+			}, nil
+		},
+		listLogsByTreasuryIDFn: func(ctx context.Context, treasuryID string, limit, offset int) ([]domain.StrategyExecutionLog, error) {
+			return []domain.StrategyExecutionLog{
+				{ID: validLogID, TreasuryID: treasuryID},
+			}, nil
+		},
+	}
+
+	s := NewStrategyService(treasuryRepo, stratRepo, nil)
+
+	ownerCtx := domain.WithUserContext(context.Background(), ownerID, "owner@example.com", domain.RoleAnalyst)
+	nonOwnerCtx := domain.WithUserContext(context.Background(), nonOwnerID, "other@example.com", domain.RoleAnalyst)
+	adminCtx := domain.WithUserContext(context.Background(), adminID, "admin@example.com", domain.RoleAdmin)
+
+	t.Run("ListStrategiesByTreasuryID - Owner access succeeds", func(t *testing.T) {
+		logs, err := s.ListStrategiesByTreasuryID(ownerCtx, validTreasuryID, 10, 0)
+		if err != nil {
+			t.Fatalf("unexpected error for owner: %v", err)
+		}
+		if len(logs) != 1 {
+			t.Errorf("expected 1 log, got %d", len(logs))
+		}
+	})
+
+	t.Run("ListStrategiesByTreasuryID - Non-owner analyst returns ErrForbidden", func(t *testing.T) {
+		_, err := s.ListStrategiesByTreasuryID(nonOwnerCtx, validTreasuryID, 10, 0)
+		if !errors.Is(err, domain.ErrForbidden) {
+			t.Fatalf("expected ErrForbidden for non-owner, got: %v", err)
+		}
+	})
+
+	t.Run("ListStrategiesByTreasuryID - Admin access succeeds", func(t *testing.T) {
+		logs, err := s.ListStrategiesByTreasuryID(adminCtx, validTreasuryID, 10, 0)
+		if err != nil {
+			t.Fatalf("unexpected error for admin: %v", err)
+		}
+		if len(logs) != 1 {
+			t.Errorf("expected 1 log, got %d", len(logs))
+		}
+	})
+
+	t.Run("GetStrategyByID - Owner access succeeds", func(t *testing.T) {
+		logRecord, err := s.GetStrategyByID(ownerCtx, validLogID)
+		if err != nil {
+			t.Fatalf("unexpected error for owner: %v", err)
+		}
+		if logRecord.ID != validLogID {
+			t.Errorf("expected ID '%s', got '%s'", validLogID, logRecord.ID)
+		}
+	})
+
+	t.Run("GetStrategyByID - Non-owner analyst returns ErrForbidden", func(t *testing.T) {
+		_, err := s.GetStrategyByID(nonOwnerCtx, validLogID)
+		if !errors.Is(err, domain.ErrForbidden) {
+			t.Fatalf("expected ErrForbidden for non-owner, got: %v", err)
+		}
+	})
+
+	t.Run("GetStrategyByID - Admin access succeeds", func(t *testing.T) {
+		logRecord, err := s.GetStrategyByID(adminCtx, validLogID)
+		if err != nil {
+			t.Fatalf("unexpected error for admin: %v", err)
+		}
+		if logRecord.ID != validLogID {
+			t.Errorf("expected ID '%s', got '%s'", validLogID, logRecord.ID)
+		}
+	})
+}
+
+func TestStrategyService_EvaluateCouncil(t *testing.T) {
+	ownerID := "user-owner-123"
+	nonOwnerID := "user-analyst-456"
+	adminID := "user-admin-789"
+	validTreasuryID := "123e4567-e89b-12d3-a456-426614174000"
+
+	ownerCtx := domain.WithUserContext(context.Background(), ownerID, "owner@example.com", domain.RoleAnalyst)
+	nonOwnerCtx := domain.WithUserContext(context.Background(), nonOwnerID, "other@example.com", domain.RoleAnalyst)
+	adminCtx := domain.WithUserContext(context.Background(), adminID, "admin@example.com", domain.RoleAdmin)
+
+	mockTreasury := &domain.Treasury{
+		ID:                validTreasuryID,
+		Name:              "Institutional Alpha Fund",
+		OwnerID:           &ownerID,
+		TotalCapital:      1000000.0,
+		RiskTolerance:     0.5,
+		MinLiquidityRatio: 0.2,
+		CreatedAt:         time.Now(),
+	}
+
+	validDeliberation := &domain.CouncilDeliberationSummary{
+		TreasuryOpinion: domain.AgentAssessment{
+			Role:         domain.AgentRoleTreasury,
+			AgentName:    "Chief Treasury Agent",
+			IsAcceptable: true,
+			Score:        0.88,
+			Findings:     []string{"Strong yield posture", "Liquidity buffers intact"},
+		},
+		RiskOpinion: domain.AgentAssessment{
+			Role:         domain.AgentRoleRisk,
+			AgentName:    "Chief Risk Officer Agent",
+			IsAcceptable: true,
+			Score:        0.82,
+			Findings:     []string{"VaR within target", "Low tail-risk profile"},
+		},
+		ComplianceOpinion: domain.AgentAssessment{
+			Role:         domain.AgentRoleCompliance,
+			AgentName:    "Regulatory Compliance Agent",
+			IsAcceptable: true,
+			Score:        1.0,
+			Findings:     []string{"Compliant with regulatory reserve ratios"},
+		},
+		ConsensusReached: true,
+		RecommendedStrategy: domain.StrategySummary{
+			TotalAllocated: 1000000.0,
+			ExpectedReturn: 0.085,
+			RiskScore:      0.22,
+			LiquidityRatio: 0.35,
+			ObjectiveValue: 0.078,
+			IsCompliant:    true,
+			Explanation:    "Consensus strategy synthesized successfully across all 3 agent viewpoints.",
+		},
+		SearchMetrics: domain.SearchMetrics{
+			Algorithm:       "astar",
+			ExecutionTimeMS: 54.3,
+			StatesExplored:  142,
+			Depth:           6,
+		},
+	}
+
+	validInput := domain.EvaluateCouncilInput{
+		Assets: []domain.Asset{
+			{
+				ID:             "gov_bond",
+				Name:           "Treasury Note",
+				AssetType:      "gov_bond",
+				ExpectedReturn: 0.045,
+				Risk:           0.02,
+				Liquidity:      0.95,
+				Volatility:     0.01,
+			},
+		},
+		Liabilities: []domain.Liability{
+			{
+				ID:                 "debt_1",
+				Name:               "Senior Debt",
+				Principal:          200000.0,
+				InterestRate:       0.035,
+				Priority:           1,
+				IsMandatoryReserve: true,
+			},
+		},
+	}
+
+	t.Run("Valid owner request executes council deliberation successfully", func(t *testing.T) {
+		repo := &MockTreasuryRepository{
+			getByIDFn: func(ctx context.Context, id string) (*domain.Treasury, error) {
+				return mockTreasury, nil
+			},
+		}
+		var capturedProblem domain.FinancialProblem
+		aiClient := &MockAIClient{
+			evaluateAgentsFn: func(ctx context.Context, problem any) (*domain.CouncilDeliberationSummary, error) {
+				capturedProblem = problem.(domain.FinancialProblem)
+				return validDeliberation, nil
+			},
+		}
+
+		svc := NewStrategyService(repo, nil, aiClient)
+		result, err := svc.EvaluateCouncil(ownerCtx, validTreasuryID, validInput)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result == nil || !result.ConsensusReached {
+			t.Fatalf("expected consensus deliberation result, got: %v", result)
+		}
+		if capturedProblem.Capital != 1000000.0 {
+			t.Errorf("expected capital 1000000.0, got %f", capturedProblem.Capital)
+		}
+		if capturedProblem.StepSize != 50000.0 { // 1000000 / 20 = 50000
+			t.Errorf("expected default step size 50000, got %f", capturedProblem.StepSize)
+		}
+	})
+
+	t.Run("Admin user can evaluate council for any treasury", func(t *testing.T) {
+		repo := &MockTreasuryRepository{
+			getByIDFn: func(ctx context.Context, id string) (*domain.Treasury, error) {
+				return mockTreasury, nil
+			},
+		}
+		aiClient := &MockAIClient{
+			evaluateAgentsFn: func(ctx context.Context, problem any) (*domain.CouncilDeliberationSummary, error) {
+				return validDeliberation, nil
+			},
+		}
+		svc := NewStrategyService(repo, nil, aiClient)
+		result, err := svc.EvaluateCouncil(adminCtx, validTreasuryID, validInput)
+		if err != nil {
+			t.Fatalf("unexpected error for admin: %v", err)
+		}
+		if result == nil {
+			t.Fatal("expected result for admin, got nil")
+		}
+	})
+
+	t.Run("Non-owner analyst receives ErrForbidden", func(t *testing.T) {
+		repo := &MockTreasuryRepository{
+			getByIDFn: func(ctx context.Context, id string) (*domain.Treasury, error) {
+				return mockTreasury, nil
+			},
+		}
+		svc := NewStrategyService(repo, nil, nil)
+		_, err := svc.EvaluateCouncil(nonOwnerCtx, validTreasuryID, validInput)
+		if !errors.Is(err, domain.ErrForbidden) {
+			t.Fatalf("expected ErrForbidden, got %v", err)
+		}
+	})
+
+	t.Run("Treasury not found returns ErrNotFound", func(t *testing.T) {
+		repo := &MockTreasuryRepository{
+			getByIDFn: func(ctx context.Context, id string) (*domain.Treasury, error) {
+				return nil, domain.ErrNotFound
+			},
+		}
+		svc := NewStrategyService(repo, nil, nil)
+		_, err := svc.EvaluateCouncil(ownerCtx, validTreasuryID, validInput)
+		if !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("expected ErrNotFound, got %v", err)
+		}
+	})
+
+	t.Run("Invalid treasury ID returns ErrInvalidID", func(t *testing.T) {
+		svc := NewStrategyService(nil, nil, nil)
+		_, err := svc.EvaluateCouncil(ownerCtx, "not-a-valid-uuid", validInput)
+		if !errors.Is(err, domain.ErrInvalidID) {
+			t.Fatalf("expected ErrInvalidID, got %v", err)
+		}
+	})
+
+	t.Run("Negative step_size returns validation error", func(t *testing.T) {
+		repo := &MockTreasuryRepository{
+			getByIDFn: func(ctx context.Context, id string) (*domain.Treasury, error) {
+				return mockTreasury, nil
+			},
+		}
+		svc := NewStrategyService(repo, nil, nil)
+		negStep := -100.0
+		input := validInput
+		input.StepSize = &negStep
+		_, err := svc.EvaluateCouncil(ownerCtx, validTreasuryID, input)
+		var valErr *domain.ValidationError
+		if !errors.As(err, &valErr) {
+			t.Fatalf("expected ValidationError, got %v", err)
+		}
+	})
+
+	t.Run("Step_size too small returns validation error", func(t *testing.T) {
+		repo := &MockTreasuryRepository{
+			getByIDFn: func(ctx context.Context, id string) (*domain.Treasury, error) {
+				return mockTreasury, nil
+			},
+		}
+		svc := NewStrategyService(repo, nil, nil)
+		tinyStep := 1000.0 // 1000000 / 1000 = 1000 steps > 200
+		input := validInput
+		input.StepSize = &tinyStep
+		_, err := svc.EvaluateCouncil(ownerCtx, validTreasuryID, input)
+		var valErr *domain.ValidationError
+		if !errors.As(err, &valErr) {
+			t.Fatalf("expected ValidationError for too many steps, got %v", err)
+		}
+	})
+
+	t.Run("Upstream AI Engine error propagates", func(t *testing.T) {
+		repo := &MockTreasuryRepository{
+			getByIDFn: func(ctx context.Context, id string) (*domain.Treasury, error) {
+				return mockTreasury, nil
+			},
+		}
+		aiClient := &MockAIClient{
+			evaluateAgentsFn: func(ctx context.Context, problem any) (*domain.CouncilDeliberationSummary, error) {
+				return nil, domain.ErrUpstreamUnavailable
+			},
+		}
+		svc := NewStrategyService(repo, nil, aiClient)
+		_, err := svc.EvaluateCouncil(ownerCtx, validTreasuryID, validInput)
+		if !errors.Is(err, domain.ErrUpstreamUnavailable) {
+			t.Fatalf("expected ErrUpstreamUnavailable, got %v", err)
+		}
+	})
+
+	t.Run("EvaluateDirectProblem - valid problem succeeds", func(t *testing.T) {
+		aiClient := &MockAIClient{
+			evaluateAgentsFn: func(ctx context.Context, problem any) (*domain.CouncilDeliberationSummary, error) {
+				return validDeliberation, nil
+			},
+		}
+		svc := NewStrategyService(nil, nil, aiClient)
+		directProb := domain.FinancialProblem{
+			Capital:          500000.0,
+			RiskTolerance:    0.4,
+			MinimumLiquidity: 0.15,
+			StepSize:         25000.0,
+			Assets:           validInput.Assets,
+		}
+		res, err := svc.EvaluateDirectProblem(context.Background(), directProb)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res == nil {
+			t.Fatal("expected result, got nil")
+		}
+	})
+
+	t.Run("EvaluateDirectProblem - invalid problem returns ValidationError", func(t *testing.T) {
+		svc := NewStrategyService(nil, nil, nil)
+		invalidProb := domain.FinancialProblem{
+			Capital: -100.0, // Invalid capital
+		}
+		_, err := svc.EvaluateDirectProblem(context.Background(), invalidProb)
+		var valErr *domain.ValidationError
+		if !errors.As(err, &valErr) {
+			t.Fatalf("expected ValidationError, got %v", err)
 		}
 	})
 }

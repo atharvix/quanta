@@ -43,10 +43,11 @@ func (m *MockStratRepo) ListLogsByTreasuryID(ctx context.Context, treasuryID str
 }
 
 type mockAIClientImpl struct {
-	generateFn func(ctx context.Context, problem any, algorithm string) (*clients.AIGenerateResponse, error)
-	compareFn  func(ctx context.Context, problem any) (json.RawMessage, error)
-	riskFn     func(ctx context.Context, req domain.AIRiskAnalyzeRequest) (*domain.AIRiskAnalyzeResponse, error)
-	stressFn   func(ctx context.Context, problem any) (*domain.AdversarialStressTestResult, error)
+	generateFn       func(ctx context.Context, problem any, algorithm string) (*clients.AIGenerateResponse, error)
+	compareFn        func(ctx context.Context, problem any) (json.RawMessage, error)
+	riskFn           func(ctx context.Context, req domain.AIRiskAnalyzeRequest) (*domain.AIRiskAnalyzeResponse, error)
+	stressFn         func(ctx context.Context, problem any) (*domain.AdversarialStressTestResult, error)
+	evaluateAgentsFn func(ctx context.Context, problem any) (*domain.CouncilDeliberationSummary, error)
 }
 
 func (m *mockAIClientImpl) Health(ctx context.Context) error {
@@ -81,6 +82,13 @@ func (m *mockAIClientImpl) AdversarialStressTest(ctx context.Context, problem an
 	return nil, nil
 }
 
+func (m *mockAIClientImpl) EvaluateAgents(ctx context.Context, problem any) (*domain.CouncilDeliberationSummary, error) {
+	if m.evaluateAgentsFn != nil {
+		return m.evaluateAgentsFn(ctx, problem)
+	}
+	return nil, nil
+}
+
 func setupStrategyRouter(h *StrategyHandler) *chi.Mux {
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(v1 chi.Router) {
@@ -88,6 +96,9 @@ func setupStrategyRouter(h *StrategyHandler) *chi.Mux {
 			st.Get("/", h.ListByTreasury)
 			st.Post("/generate", h.Generate)
 		})
+		v1.Post("/treasuries/{id}/council/evaluate", h.EvaluateCouncil)
+		v1.Post("/treasuries/{id}/agents/evaluate", h.EvaluateCouncil)
+		v1.Post("/agents/evaluate", h.EvaluateDirect)
 		v1.Get("/strategies/{id}", h.GetByID)
 	})
 	return r
@@ -371,6 +382,256 @@ func TestStrategyHandler_GetByID(t *testing.T) {
 
 		if rec.Code != http.StatusNotFound {
 			t.Fatalf("expected 404 Not Found, got %d", rec.Code)
+		}
+	})
+}
+
+func TestStrategyHandler_EvaluateCouncil(t *testing.T) {
+	validTreasuryID := "123e4567-e89b-12d3-a456-426614174000"
+	validBody := `{
+		"objective": "maximize_risk_adjusted_return",
+		"market_state": "normal",
+		"assets": [
+			{
+				"id": "gov_bond",
+				"name": "US Treasury 10Y",
+				"asset_type": "gov_bond",
+				"expected_return": 0.045,
+				"risk": 0.02,
+				"liquidity": 0.95
+			}
+		],
+		"liabilities": [],
+		"constraints": []
+	}`
+
+	mockDeliberation := &domain.CouncilDeliberationSummary{
+		TreasuryOpinion: domain.AgentAssessment{
+			Role:         domain.AgentRoleTreasury,
+			AgentName:    "Chief Treasury Agent",
+			IsAcceptable: true,
+			Score:        0.85,
+			Findings:     []string{"Adequate return margin"},
+		},
+		RiskOpinion: domain.AgentAssessment{
+			Role:         domain.AgentRoleRisk,
+			AgentName:    "Chief Risk Officer Agent",
+			IsAcceptable: true,
+			Score:        0.90,
+			Findings:     []string{"Low risk profile"},
+		},
+		ComplianceOpinion: domain.AgentAssessment{
+			Role:         domain.AgentRoleCompliance,
+			AgentName:    "Regulatory Compliance Agent",
+			IsAcceptable: true,
+			Score:        1.0,
+			Findings:     []string{"Compliant with Basel III"},
+		},
+		ConsensusReached: true,
+		RecommendedStrategy: domain.StrategySummary{
+			TotalAllocated: 100000.0,
+			ExpectedReturn: 0.045,
+			RiskScore:      0.02,
+			LiquidityRatio: 0.95,
+			Explanation:    "Consensus achieved.",
+		},
+	}
+
+	t.Run("Success 200 OK on council/evaluate", func(t *testing.T) {
+		tRepo := &MockRepo{
+			getByIDFn: func(ctx context.Context, id string) (*domain.Treasury, error) {
+				return &domain.Treasury{
+					ID:                id,
+					TotalCapital:      100000.0,
+					RiskTolerance:     0.5,
+					MinLiquidityRatio: 0.2,
+				}, nil
+			},
+		}
+		aiClient := &mockAIClientImpl{
+			evaluateAgentsFn: func(ctx context.Context, problem any) (*domain.CouncilDeliberationSummary, error) {
+				return mockDeliberation, nil
+			},
+		}
+
+		svc := service.NewStrategyService(tRepo, nil, aiClient)
+		h := NewStrategyHandler(svc)
+		r := setupStrategyRouter(h)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/treasuries/"+validTreasuryID+"/council/evaluate", bytes.NewBufferString(validBody))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		var resp domain.CouncilDeliberationSummary
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatalf("failed to decode council response: %v", err)
+		}
+		if !resp.ConsensusReached {
+			t.Errorf("expected consensus_reached=true")
+		}
+		if resp.TreasuryOpinion.AgentName != "Chief Treasury Agent" {
+			t.Errorf("unexpected treasury agent name: %s", resp.TreasuryOpinion.AgentName)
+		}
+	})
+
+	t.Run("Success 200 OK on alias agents/evaluate", func(t *testing.T) {
+		tRepo := &MockRepo{
+			getByIDFn: func(ctx context.Context, id string) (*domain.Treasury, error) {
+				return &domain.Treasury{
+					ID:                id,
+					TotalCapital:      100000.0,
+					RiskTolerance:     0.5,
+					MinLiquidityRatio: 0.2,
+				}, nil
+			},
+		}
+		aiClient := &mockAIClientImpl{
+			evaluateAgentsFn: func(ctx context.Context, problem any) (*domain.CouncilDeliberationSummary, error) {
+				return mockDeliberation, nil
+			},
+		}
+
+		svc := service.NewStrategyService(tRepo, nil, aiClient)
+		h := NewStrategyHandler(svc)
+		r := setupStrategyRouter(h)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/treasuries/"+validTreasuryID+"/agents/evaluate", bytes.NewBufferString(validBody))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK on alias, got %d", rec.Code)
+		}
+	})
+
+	t.Run("Bad Request on malformed JSON", func(t *testing.T) {
+		svc := service.NewStrategyService(nil, nil, nil)
+		h := NewStrategyHandler(svc)
+		r := setupStrategyRouter(h)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/treasuries/"+validTreasuryID+"/council/evaluate", bytes.NewBufferString("{invalid-json"))
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 Bad Request, got %d", rec.Code)
+		}
+	})
+
+	t.Run("Not Found on missing treasury", func(t *testing.T) {
+		tRepo := &MockRepo{
+			getByIDFn: func(ctx context.Context, id string) (*domain.Treasury, error) {
+				return nil, domain.ErrNotFound
+			},
+		}
+		svc := service.NewStrategyService(tRepo, nil, nil)
+		h := NewStrategyHandler(svc)
+		r := setupStrategyRouter(h)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/treasuries/"+validTreasuryID+"/council/evaluate", bytes.NewBufferString(validBody))
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("expected 404 Not Found, got %d", rec.Code)
+		}
+	})
+
+	t.Run("Upstream Unavailable 502", func(t *testing.T) {
+		tRepo := &MockRepo{
+			getByIDFn: func(ctx context.Context, id string) (*domain.Treasury, error) {
+				return &domain.Treasury{
+					ID:                id,
+					TotalCapital:      100000.0,
+					RiskTolerance:     0.5,
+					MinLiquidityRatio: 0.2,
+				}, nil
+			},
+		}
+		aiClient := &mockAIClientImpl{
+			evaluateAgentsFn: func(ctx context.Context, problem any) (*domain.CouncilDeliberationSummary, error) {
+				return nil, domain.ErrUpstreamUnavailable
+			},
+		}
+
+		svc := service.NewStrategyService(tRepo, nil, aiClient)
+		h := NewStrategyHandler(svc)
+		r := setupStrategyRouter(h)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/treasuries/"+validTreasuryID+"/council/evaluate", bytes.NewBufferString(validBody))
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadGateway {
+			t.Fatalf("expected 502 Bad Gateway, got %d", rec.Code)
+		}
+	})
+}
+
+func TestStrategyHandler_EvaluateDirect(t *testing.T) {
+	validProblemBody := `{
+		"capital": 100000.0,
+		"step_size": 5000.0,
+		"risk_tolerance": 0.5,
+		"minimum_liquidity": 0.2,
+		"objective": "maximize_risk_adjusted_return",
+		"market_state": "normal",
+		"assets": [
+			{
+				"id": "gov_bond",
+				"name": "US Treasury 10Y",
+				"asset_type": "gov_bond",
+				"expected_return": 0.045,
+				"risk": 0.02,
+				"liquidity": 0.95
+			}
+		],
+		"liabilities": [],
+		"constraints": []
+	}`
+
+	mockDeliberation := &domain.CouncilDeliberationSummary{
+		ConsensusReached: true,
+	}
+
+	t.Run("Success 200 OK on direct evaluation", func(t *testing.T) {
+		aiClient := &mockAIClientImpl{
+			evaluateAgentsFn: func(ctx context.Context, problem any) (*domain.CouncilDeliberationSummary, error) {
+				return mockDeliberation, nil
+			},
+		}
+
+		svc := service.NewStrategyService(nil, nil, aiClient)
+		h := NewStrategyHandler(svc)
+		r := setupStrategyRouter(h)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/agents/evaluate", bytes.NewBufferString(validProblemBody))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("Bad Request on malformed body", func(t *testing.T) {
+		svc := service.NewStrategyService(nil, nil, nil)
+		h := NewStrategyHandler(svc)
+		r := setupStrategyRouter(h)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/agents/evaluate", bytes.NewBufferString("not-json"))
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 Bad Request, got %d", rec.Code)
 		}
 	})
 }

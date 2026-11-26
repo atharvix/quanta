@@ -142,3 +142,64 @@ func TestOrchestrationService_Orchestrate(t *testing.T) {
 		}
 	})
 }
+
+func TestOrchestrationService_GetRunByID_Authorization(t *testing.T) {
+	ownerID := "user-owner-123"
+	nonOwnerID := "user-analyst-456"
+	adminID := "user-admin-789"
+	validTreasuryID := "123e4567-e89b-12d3-a456-426614174000"
+	validRunID := "423e4567-e89b-12d3-a456-426614174000"
+
+	tRepo := &MockTreasuryRepository{
+		getByIDFn: func(ctx context.Context, id string) (*domain.Treasury, error) {
+			return &domain.Treasury{
+				ID:        validTreasuryID,
+				Name:      "Owned Corp",
+				OwnerID:   &ownerID,
+				CreatedAt: time.Now(),
+			}, nil
+		},
+	}
+	orchRepo := &MockOrchestrationRepository{
+		getByIDFn: func(ctx context.Context, id string) (*domain.OrchestrationRun, error) {
+			return &domain.OrchestrationRun{
+				ID:         id,
+				TreasuryID: validTreasuryID,
+				Status:     domain.OrchestrationStatusCompleted,
+			}, nil
+		},
+	}
+
+	svc := NewOrchestrationService(tRepo, orchRepo, nil, nil, nil)
+
+	ownerCtx := domain.WithUserContext(context.Background(), ownerID, "owner@example.com", domain.RoleAnalyst)
+	nonOwnerCtx := domain.WithUserContext(context.Background(), nonOwnerID, "other@example.com", domain.RoleAnalyst)
+	adminCtx := domain.WithUserContext(context.Background(), adminID, "admin@example.com", domain.RoleAdmin)
+
+	t.Run("GetRunByID - Owner access succeeds", func(t *testing.T) {
+		run, err := svc.GetRunByID(ownerCtx, validRunID)
+		if err != nil {
+			t.Fatalf("unexpected error for owner: %v", err)
+		}
+		if run.ID != validRunID {
+			t.Errorf("expected ID '%s', got '%s'", validRunID, run.ID)
+		}
+	})
+
+	t.Run("GetRunByID - Non-owner returns ErrForbidden", func(t *testing.T) {
+		_, err := svc.GetRunByID(nonOwnerCtx, validRunID)
+		if !errors.Is(err, domain.ErrForbidden) {
+			t.Fatalf("expected ErrForbidden for non-owner, got: %v", err)
+		}
+	})
+
+	t.Run("GetRunByID - Admin access succeeds", func(t *testing.T) {
+		run, err := svc.GetRunByID(adminCtx, validRunID)
+		if err != nil {
+			t.Fatalf("unexpected error for admin: %v", err)
+		}
+		if run.ID != validRunID {
+			t.Errorf("expected ID '%s', got '%s'", validRunID, run.ID)
+		}
+	})
+}
