@@ -48,9 +48,68 @@ A Python intelligence outage **must never** block core Go/PostgreSQL operations:
 
 ### 3.1 Auth, Organizations & Treasury Positions
 - `POST /api/v1/auth/login` / `GET /api/v1/auth/me` (returns user profile + active organization memberships)
-- `GET /api/v1/orgs/{orgId}/treasuries` / `POST /api/v1/orgs/{orgId}/treasuries`
-- `GET /api/v1/orgs/{orgId}/treasuries/{id}/position` — Returns per-account **original-currency balances** (`ledger_balance`, `encumbered_balance`, `available_balance`, `currency_code`) and, only when single-currency or backed by explicit `fx_rate_snapshot_id`s, **reporting-currency totals** (`operating_liquidity`, `emergency_reserves`, `investable_capital`, `base_currency`, `fx_snapshots_used[]`).
-- `GET/POST /api/v1/orgs/{orgId}/treasuries/{id}/counterparties` & `.../constraints`
+- `GET /api/v1/orgs/{orgId}/treasuries`
+- `GET /api/v1/orgs/{orgId}/treasuries/{entityId}/accounts`
+- `GET /api/v1/orgs/{orgId}/accounts/{accountId}` & `GET /api/v1/orgs/{orgId}/accounts/{accountId}/ledger`
+- `POST /api/v1/orgs/{orgId}/accounts/{accountId}/credit` | `.../debit` | `.../holds` | `.../holds/release` | `.../holds/settle` | `.../reconcile`
+- `POST /api/v1/orgs/{orgId}/ledger-entries/{entryId}/reverse`
+- `GET/POST /api/v1/orgs/{orgId}/treasuries/{entityId}/liquidity-policies` & `PUT .../liquidity-policies/{policyId}` & `POST .../liquidity-policies/validate`
+- `GET/POST /api/v1/orgs/{orgId}/treasuries/{entityId}/counterparties` & `PUT .../counterparties/{counterpartyId}` & `POST .../counterparties/{counterpartyId}/validate-exposure`
+
+#### Milestone 3 Request/Response Examples
+**Login (`POST /api/v1/auth/login`):**
+```json
+{
+  "email": "analyst@quanta.local",
+  "password": "<LOCAL_SYNTHETIC_ANALYST_PASSWORD>"
+}
+```
+Response (`200 OK`):
+```json
+{
+  "access_token": "<JWT_HS256_TOKEN>",
+  "token_type": "Bearer",
+  "expires_at": "2026-11-28T01:55:00Z",
+  "user": { "id": "uuid", "email": "analyst@quanta.local", "full_name": "Alex Analyst", "is_active": true },
+  "memberships": [{ "id": "uuid", "organization_id": "uuid", "role": "TREASURY_ANALYST", "status": "ACTIVE" }]
+}
+```
+
+**Credit Account (`POST /api/v1/orgs/{orgId}/accounts/{accountId}/credit`):**
+```json
+{
+  "amount": "1000.0000",
+  "reference_type": "DEMO_SEED"
+}
+```
+Response (`201 Created`):
+```json
+{
+  "entry": { "id": "uuid", "entry_type": "CREDIT", "currency_code": "USD", "delta_amount": "1000.0000", "balance_after": "1000.0000", "account_version": 2 },
+  "account": { "id": "uuid", "ledger_balance": "1000.0000", "encumbered_balance": "0.0000", "available_balance": "1000.0000", "version": 2 }
+}
+```
+
+**Validate Liquidity Policy (`POST /api/v1/orgs/{orgId}/treasuries/{entityId}/liquidity-policies/validate`):**
+```json
+{
+  "total_available": "1000.0000",
+  "proposed_allocation": "750.0000"
+}
+```
+Response (`422 Unprocessable Entity` when breaching `min_operating_liquidity + min_emergency_reserve`):
+```json
+{
+  "error": {
+    "code": "LIQUIDITY_POLICY_VIOLATION",
+    "message": "allocation violates liquidity policy floors",
+    "correlation_id": "uuid",
+    "details": { "required_floor": "300.0000", "post_allocation_cash": "250.0000", "investable_capacity": "700.0000" }
+  }
+}
+```
+
+> **Local Synthetic Credentials Note:** Never commit plaintext passwords or JWT secrets. Seeded synthetic analyst (`analyst@quanta.local`, role `TREASURY_ANALYST`) and approver (`approver@quanta.local`, role `TREASURY_APPROVER`) fixtures are hashed via `bcrypt` at test/seed time using local-only environment variables or test fixtures.
 
 ### 3.2 Intelligence, Proposals & Governance
 - `POST /api/v1/orgs/{orgId}/treasuries/{id}/forecast`

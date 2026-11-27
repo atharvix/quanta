@@ -13,21 +13,22 @@
 ---
 
 ## Phase 1 — Go Backend Foundation
-**Objective:** Bootstrap the Go modular monolith skeleton, HTTP server, configuration, observability, and reliability primitives on Windows.
+**Objective:** Install native Windows PostgreSQL, verify connectivity, and bootstrap the Go modular monolith skeleton, exact decimal math, observability, and reliability primitives.
 - **Deliverables:**
-  - Fresh Git repository initialization and `go.mod` setup.
-  - Modular package layout (`org`, `treasury`, `ledger`, `constraints`, `governance`, `audit`, `auth`, `verifier`).
+  - Fresh Git repository setup and `apps/backend/go.mod` initialization.
+  - Native Windows PostgreSQL installation and connectivity verification (`quanta` role and `quanta_db` database; full schema migrations and persistence belong to Phase 2).
+  - Modular package layout (`config`, `database`, `money`, `middleware`, `handlers`, `router`, `cmd/server`).
   - Liveness (`GET /health`) and readiness (`GET /api/v1/health`) endpoints.
   - `X-Correlation-ID` propagation middleware, structured logging, and canonical JSON error envelope.
-  - Exact decimal arithmetic utility package (zero `float64` in monetary types) with unit tests.
-- **Exit Criteria:** Go service builds natively on Windows, passes decimal/middleware unit tests, and responds cleanly to liveness/readiness checks.
+  - Exact decimal arithmetic utility package (zero `float64` in monetary types) with half-even rounding and capital-conservation tests.
+- **Exit Criteria:** Native PostgreSQL is reachable on `127.0.0.1:5432`, Go service builds natively on Windows, passes decimal/health/middleware unit tests, and responds cleanly to liveness/readiness checks.
 
 ---
 
 ## Phase 2 — PostgreSQL and Financial Domain
-**Objective:** Stand up native Windows PostgreSQL, versioned schema migrations, multi-tenant organization tables, and append-only ledger persistence.
+**Objective:** Implement full versioned schema migrations, multi-tenant organization tables, and append-only ledger persistence on top of the Phase 1 PostgreSQL instance.
 - **Deliverables:**
-  - Native Windows PostgreSQL bootstrap SQL and versioned Go-managed migrations (`organizations`, `users`, `organization_memberships`, `treasury_entities`, `treasury_accounts`, `ledger_entries`, `fx_rate_snapshots`, `liquidity_policies`, `counterparties`, `financial_constraints`, `audit_events`).
+  - Versioned Go-managed SQL migrations (`organizations`, `users`, `organization_memberships`, `treasury_entities`, `treasury_accounts`, `ledger_entries`, `fx_rate_snapshots`, `liquidity_policies`, `counterparties`, `financial_constraints`, `audit_events`).
   - Atomic ledger entry insertion + `treasury_accounts` balance/encumbrance projection updates inside ACID transactions.
   - Deterministic reversal entry (`REVERSAL`) and hold lifecycle (`HOLD_PLACED`, `HOLD_RELEASED`, `HOLD_SETTLED`) implementation.
   - Ledger-to-projection reconciliation check.
@@ -47,27 +48,11 @@
 
 ---
 
-## Phase 4 — Python Intelligence Foundation
+## Phase 4 — Python Intelligence Foundation *(Implemented in Milestone 4)*
 **Objective:** Establish the separate Python intelligence service, versioned Go ↔ Python contract, input validation, and forecasting baselines.
-- **Deliverables:**
-  - Isolated Python virtual environment on Windows and service entrypoint on `127.0.0.1`.
-  - Versioned contract (`contract_version: "1.0"`) with decimal-string monetary serialization, correlation IDs, and bounded Go timeouts.
-  - Input data validation, model provenance metadata (`model_name`, `model_version`, `seed`), and rolling out-of-time backtest harness.
-  - Classical forecasting baselines (`Seasonal Naive`, `ETS`, `ARIMA/SARIMAX`) on synthetic cash-flow series.
-  - Graceful degradation tests in Go confirming core treasury reads remain available when Python is stopped or timed out.
-- **Exit Criteria:** Go ↔ Python contract tests pass, classical forecast baselines beat/validate against Seasonal Naive in backtests, and Python outage tests confirm zero core Go disruption.
 
----
-
-## Phase 5 — Risk and Optimization
-**Objective:** Implement risk analytics, classical constrained optimization, unified `OptimizationRun` statuses, and Go-side independent financial verification.
-- **Deliverables:**
-  - Risk simulation module (Monte Carlo, Historical/Parametric VaR, CVaR, stress testing) with statistical backtesting/calibration checks in Python.
-  - Classical optimization baseline(s) (LP/QP/MILP via selected candidate such as HiGHS/OR-Tools/CVXPY/Pyomo).
-  - Go independent financial verifier enforcing capital conservation, liquidity floors, counterparty limits, and Banker's Rounding residual assignment.
-  - Unified 5-status `OptimizationRun` persistence (`COMPLETED`, `INFEASIBLE`, `SOLVER_FAILED`, `VERIFICATION_FAILED`, `CANCELLED`), permitting `AllocationProposal` creation **only** on `COMPLETED`.
-  - Optional async `202 Accepted` job polling for long-running sweeps.
-- **Exit Criteria:** Tests prove Go catches invalid/infeasible Python outputs (`VERIFICATION_FAILED` / `INFEASIBLE`), handles timeouts (`SOLVER_FAILED`), and preserves exact decimal capital conservation.
+## Phase 5 — Risk, Optimization & Proposal Governance *(Implemented in Milestone 4)*
+**Objective:** Implement risk analytics, classical LP/MILP optimization (`HiGHS`), unified `OptimizationRun` statuses, Go-side independent financial verification (`internal/verifier`), and `AllocationProposal` maker-checker approval governance (`internal/service/proposal_service.go`). Live PostgreSQL integration remains pending until PostgreSQL is installed on the developer's personal laptop.
 
 ---
 

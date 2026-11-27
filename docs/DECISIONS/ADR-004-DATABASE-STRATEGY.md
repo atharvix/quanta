@@ -20,7 +20,7 @@ Use **PostgreSQL installed natively on Windows** as the single authoritative dat
 
 ## Trade-offs & Mitigations
 - **Trade-off:** Requires local PostgreSQL installation and initial database/role setup on developer Windows machines.
-  - **Mitigation:** Document native Windows setup clearly and provide deterministic bootstrap SQL in Phase 1.
+  - **Mitigation:** Install PostgreSQL natively and verify connectivity (`quanta` role + `quanta_db`) in **Phase 1 / Milestone 1**; execute full schema migrations and persistence implementation in **Phase 2 / Milestone 2**.
 - **Trade-off:** Single-database bottleneck if write volume grows massively.
   - **Mitigation:** Corporate treasury ledger and approval workloads are high-value, moderate-TPS transactions well within a single PostgreSQL instance.
 

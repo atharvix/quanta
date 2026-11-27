@@ -67,16 +67,17 @@
 
 ---
 
-## 4. Decision Summary & Unresolved Questions
+## 4. Decision Summary & Milestone 4 Implementation Notes
 
 | Item | Classification | Notes |
 | :--- | :--- | :--- |
 | Candidate-only status in Phase 0; zero installs/downloads | **Confirmed** | Documentation phase only |
 | Python owns statistical/model validation; Go owns financial verification | **Confirmed** | Go does not prove statistical accuracy |
 | LLMs non-authoritative; quantum advantage never assumed | **Confirmed** | Empirical benchmarking required |
-| Rolling backtest & exact-baseline benchmarking protocol | **Proposed** | Implemented in Phases 4–6 |
+| Rolling backtest & exact-baseline benchmarking protocol | **Implemented (Milestone 4)** | `services/intelligence/` using `Seasonal Naive`, `Holt Linear ETS`, `Historical/Parametric/MC VaR & CVaR`, `IsolationForest`, and `scipy.optimize.linprog` / `milp` (HiGHS) |
 
-**Unresolved Questions:**
-1. Which classical optimization stack (`CVXPY + HiGHS`, `OR-Tools`, or `Pyomo + HiGHS`) will be chosen as the primary Phase 5 baseline?
-2. Which QAOA/QUBO SDK (`Qiskit`, `PennyLane`, or `D-Wave Ocean`) will be prototyped first in Phase 6?
-3. Will language intelligence remain strictly local/offline (open-weight models) or support optional hosted APIs?
+### Milestone 4 Implemented Algorithms, Assumptions & Limitations
+- **Forecasting (`app/forecasting.py`):** Seasonal Naive baseline and Holt's Linear Exponential Smoothing (`L-BFGS-B` SSE fit on `numpy`/`scipy`; `statsmodels` is not installed). Rolling out-of-time backtesting computes `MAE`, `RMSE`, and 80% interval coverage (`p10`/`p90` via normal residual SE scaled by $\sqrt{h}$ when $\ge 4$ residuals exist). Insufficient history sets `backtest.supported = false` and omits `p10`/`p90` rather than fabricating metrics.
+- **Risk (`app/risk.py`):** Positive-loss Historical VaR/CVaR, Parametric Normal VaR/CVaR, seeded Monte Carlo (`numpy.random.default_rng(seed)`), explicit stress scenarios, and `IsolationForest` anomaly detection (requires $\ge 12$ points).
+- **Optimization (`app/optimizer.py`):** Exact LP (`scipy.optimize.linprog`, `method="highs"`) and MILP (`scipy.optimize.milp` with `lot_size` integrality) enforcing capital conservation, candidate bounds, liquidity floors, and counterparty headroom. Returns `COMPLETED`, `INFEASIBLE`, or `SOLVER_FAILED` distinctly with `is_authoritative: false`.
+- **Known Limitations:** ETS currently models additive trend without seasonal decomposition (`statsmodels` not installed); quantum/QAOA and LLM narrator tracks remain deferred to later phases.

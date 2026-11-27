@@ -62,6 +62,48 @@ Initial development uses **realistic synthetic financial data** without assuming
 
 ---
 
-## Phase 0 Status
+## Setup & Execution (Milestone 1 & Milestone 2)
 
-This repository is at **Phase 0 (Architecture and Requirements — Revision 1)** and contains Markdown documentation only. No application code, SQL migrations, dependencies, or models have been created or installed. Phase 1 begins only after explicit review and approval.
+> **Current Status:** Milestone 2 (PostgreSQL Schema, Ledger & Multi-Tenancy) implemented in `apps/backend`. PostgreSQL remains the sole intended system of record (no SQLite, no Docker). On restricted lab machines without Administrator privileges, PostgreSQL installation and live integration verification (`QUANTA_TEST_DATABASE_URL`) are deferred to the developer's personal laptop.
+
+### 1. Native PostgreSQL Setup (Personal Windows Laptop)
+Install PostgreSQL 16 natively (requires Windows Administrator authorization):
+```powershell
+winget install --exact --id PostgreSQL.PostgreSQL.16
+```
+Configure the `quanta` role and `quanta_db` database without committing secrets:
+```powershell
+psql -U postgres -h 127.0.0.1 -p 5432 -c "CREATE ROLE quanta WITH LOGIN PASSWORD '<YOUR_LOCAL_PASSWORD>';"
+psql -U postgres -h 127.0.0.1 -p 5432 -c "CREATE DATABASE quanta_db OWNER quanta;"
+```
+
+### 2. Run & Test the Go Backend (`apps/backend`)
+Copy `.env.example` to `.env` (gitignored) and set `DATABASE_URL` and a 32+ character `JWT_SECRET`, then run:
+```powershell
+cd apps\backend
+gofmt -l .
+go vet ./...
+go build ./...
+go test -v ./...
+```
+To start the HTTP server locally (requires `DATABASE_URL` and `JWT_SECRET` in environment):
+```powershell
+$env:DATABASE_URL="postgres://quanta:<YOUR_LOCAL_PASSWORD>@127.0.0.1:5432/quanta_db?sslmode=disable"
+$env:JWT_SECRET="<YOUR_32_PLUS_CHAR_LOCAL_SECRET>"
+$env:JWT_ISSUER="quanta-backend"
+$env:JWT_AUDIENCE="quanta-api"
+go run ./cmd/server
+```
+### 3. Run & Test the Python Intelligence Service (`services/intelligence`)
+```powershell
+cd services\intelligence
+python -m pytest -v
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8001
+```
+
+To run live PostgreSQL integration tests once PostgreSQL is installed on your personal laptop:
+```powershell
+$env:QUANTA_TEST_DATABASE_URL="postgres://quanta:<YOUR_LOCAL_PASSWORD>@127.0.0.1:5432/quanta_db?sslmode=disable"
+go test -v ./internal/repository/postgres/...
+```
+Verify liveness (`GET http://127.0.0.1:8080/health`) and readiness (`GET http://127.0.0.1:8080/api/v1/health`).

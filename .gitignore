@@ -1,0 +1,26 @@
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Go build & test artifacts
+bin/
+*.exe
+*.test
+*.out
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Node / Frontend
+node_modules/
+.svelte-kit/
+dist/
+
+# Logs
+*.log
+.logs/

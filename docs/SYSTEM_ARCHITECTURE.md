@@ -78,14 +78,14 @@ Python is responsible for empirical model quality and statistical checks:
 
 ---
 
-## 4. Decision Summary & Unresolved Questions
+## 4. Decision Summary & Milestone 4 Status
 
 | Item | Classification | Notes |
 | :--- | :--- | :--- |
 | Go modular monolith + separate Python service + native Windows PostgreSQL | **Confirmed** | See ADRs 001–004 |
 | Strict split: Go financial verification vs. Python statistical validation | **Confirmed** | Go never claims statistical proof |
-| Core treasury reads remain available during Python outage | **Confirmed** | Clean degradation on compute paths |
-| Sync HTTP/JSON for fast solves + async polling for heavy runs | **Proposed** | Finalize threshold in Phase 4/5 |
+| Core treasury reads remain available during Python outage | **Confirmed** | Clean degradation (`503 UPSTREAM_UNAVAILABLE`) on compute paths |
+| Sync HTTP/JSON (`/internal/v1/forecast`, `/risk/evaluate`, `/optimize`) | **Implemented (Milestone 4)** | `services/intelligence` FastAPI + `apps/backend/internal/intelligence` + `internal/verifier` |
 
 **Unresolved Questions:**
 1. Which specific compute operations should default to async `202 Accepted` execution in Phase 5?
