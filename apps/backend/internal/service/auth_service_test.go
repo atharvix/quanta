@@ -158,11 +158,11 @@ func TestAuthService_Register(t *testing.T) {
 		}
 	})
 
-	t.Run("Bootstrap roles: first user is admin, second user is viewer", func(t *testing.T) {
+	t.Run("Bootstrap roles: first user is admin, second user is analyst and receives token", func(t *testing.T) {
 		svc, _ := setupTestAuthService()
 
 		// First user registration
-		user1, err := svc.Register(ctx, RegisterInput{
+		reg1, err := svc.Register(ctx, RegisterInput{
 			Email:    "first@quanta.local",
 			Password: "password123",
 			FullName: "First Admin",
@@ -170,21 +170,30 @@ func TestAuthService_Register(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error registering user 1: %v", err)
 		}
-		if user1.Role != domain.RoleAdmin {
-			t.Errorf("expected first user role 'admin', got '%s'", user1.Role)
+		if reg1.User.Role != domain.RoleAdmin {
+			t.Errorf("expected first user role 'admin', got '%s'", reg1.User.Role)
+		}
+		if reg1.Token == "" {
+			t.Error("expected non-empty token on registration for user 1")
+		}
+		if reg1.ExpiresAt.Before(time.Now()) {
+			t.Error("expected expires_at in the future on registration")
 		}
 
 		// Second user registration
-		user2, err := svc.Register(ctx, RegisterInput{
+		reg2, err := svc.Register(ctx, RegisterInput{
 			Email:    "second@quanta.local",
 			Password: "password123",
-			FullName: "Second Viewer",
+			FullName: "Second Analyst",
 		})
 		if err != nil {
 			t.Fatalf("unexpected error registering user 2: %v", err)
 		}
-		if user2.Role != domain.RoleViewer {
-			t.Errorf("expected second user role 'viewer', got '%s'", user2.Role)
+		if reg2.User.Role != domain.RoleAnalyst {
+			t.Errorf("expected second user role 'analyst', got '%s'", reg2.User.Role)
+		}
+		if reg2.Token == "" {
+			t.Error("expected non-empty token on registration for user 2")
 		}
 	})
 
@@ -431,21 +440,21 @@ func TestAuthService_UpdateRole(t *testing.T) {
 	})
 
 	t.Run("Invalid role returns ErrInvalidRole", func(t *testing.T) {
-		_, err := svc.UpdateRole(ctx, viewer.ID, "superman")
+		_, err := svc.UpdateRole(ctx, viewer.User.ID, "superman")
 		if !errors.Is(err, domain.ErrInvalidRole) {
 			t.Fatalf("expected ErrInvalidRole, got %v", err)
 		}
 	})
 
 	t.Run("Cannot demote the only admin returns ErrCannotDemoteOnlyAdmin", func(t *testing.T) {
-		_, err := svc.UpdateRole(ctx, admin.ID, "analyst")
+		_, err := svc.UpdateRole(ctx, admin.User.ID, "analyst")
 		if !errors.Is(err, domain.ErrCannotDemoteOnlyAdmin) {
 			t.Fatalf("expected ErrCannotDemoteOnlyAdmin, got %v", err)
 		}
 	})
 
 	t.Run("Promoting viewer to analyst succeeds", func(t *testing.T) {
-		updated, err := svc.UpdateRole(ctx, viewer.ID, "analyst")
+		updated, err := svc.UpdateRole(ctx, viewer.User.ID, "analyst")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -456,13 +465,13 @@ func TestAuthService_UpdateRole(t *testing.T) {
 
 	t.Run("Promoting second user to admin allows demoting first admin", func(t *testing.T) {
 		// Promote second user to admin
-		_, err := svc.UpdateRole(ctx, viewer.ID, "admin")
+		_, err := svc.UpdateRole(ctx, viewer.User.ID, "admin")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
 		// Now there are 2 admins; demoting the first admin should succeed
-		updated, err := svc.UpdateRole(ctx, admin.ID, "viewer")
+		updated, err := svc.UpdateRole(ctx, admin.User.ID, "viewer")
 		if err != nil {
 			t.Fatalf("unexpected error demoting admin when 2 exist: %v", err)
 		}
@@ -556,7 +565,7 @@ func TestAuthService_AuditActions(t *testing.T) {
 	// 4. UpdateRole triggers user.role_changed
 	authCtx := domain.WithUserContext(ctx, "admin-1", "admin@quanta.local", domain.RoleAdmin)
 	user2, _ := svc.Register(ctx, RegisterInput{Email: "user2@quanta.local", Password: "password123"})
-	_, err = svc.UpdateRole(authCtx, user2.ID, "analyst")
+	_, err = svc.UpdateRole(authCtx, user2.User.ID, "viewer")
 	if err != nil {
 		t.Fatalf("update role failed: %v", err)
 	}

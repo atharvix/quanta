@@ -1,16 +1,16 @@
 <script lang="ts">
-  import '../app.css';
-  import { page } from '$app/state';
-  import { goto } from '$app/navigation';
-  import { browser } from '$app/env';
-  import { onMount } from 'svelte';
-  import { token, user, logout, me } from '$lib/auth';
-  import { isAdmin } from '$lib/roles';
-  import { theme } from '$lib/theme';
-  import Sidebar from '$lib/components/Sidebar.svelte';
-  import Header from '$lib/components/Header.svelte';
-  import ThemeToggle from '$lib/components/ThemeToggle.svelte';
-  import type { LayoutProps } from './$types';
+  import "../app.css";
+  import { page } from "$app/state";
+  import { goto } from "$app/navigation";
+  import { browser } from "$app/env";
+  import { onMount } from "svelte";
+  import { token, user, logout, me } from "$lib/auth";
+  import { isAdmin } from "$lib/roles";
+  import { theme } from "$lib/theme";
+  import Sidebar from "$lib/components/Sidebar.svelte";
+  import Header from "$lib/components/Header.svelte";
+  import ThemeToggle from "$lib/components/ThemeToggle.svelte";
+  import type { LayoutProps } from "./$types";
 
   let { children }: LayoutProps = $props();
 
@@ -18,15 +18,15 @@
   let isMobileOpen = $state(false);
 
   const isAuthPage = $derived(
-    page.url.pathname === '/login' || page.url.pathname === '/register'
+    page.url.pathname === "/login" || page.url.pathname === "/register",
   );
 
   onMount(async () => {
     theme.init();
 
     if (browser) {
-      const savedCollapsed = localStorage.getItem('quanta_sidebar_collapsed');
-      if (savedCollapsed === 'true') {
+      const savedCollapsed = localStorage.getItem("quanta_sidebar_collapsed");
+      if (savedCollapsed === "true") {
         isCollapsed = true;
       }
     }
@@ -43,14 +43,19 @@
   $effect(() => {
     if (!browser) return;
     const pathname = page.url.pathname;
-    const isPublic = pathname === '/login' || pathname === '/register';
+    const isPublic = pathname === "/login" || pathname === "/register";
 
     if (!$token && !isPublic) {
-      goto('/login');
+      goto("/login");
     } else if ($token && isPublic) {
-      goto('/');
-    } else if ($token && pathname.startsWith('/admin') && $user && !isAdmin($user.role)) {
-      goto('/');
+      goto("/");
+    } else if (
+      $token &&
+      pathname.startsWith("/admin") &&
+      $user &&
+      !isAdmin($user.role)
+    ) {
+      goto("/");
     }
   });
 
@@ -71,10 +76,7 @@
     <!-- Authenticated Enterprise Shell -->
     <Sidebar bind:isCollapsed bind:isMobileOpen />
 
-    <div
-      class="shell-body"
-      class:sidebar-collapsed={isCollapsed}
-    >
+    <div class="shell-body" class:sidebar-collapsed={isCollapsed}>
       <Header bind:isMobileOpen />
       <main class="main-content">
         {@render children()}

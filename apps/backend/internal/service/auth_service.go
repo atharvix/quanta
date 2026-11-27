@@ -44,6 +44,13 @@ type LoginInput struct {
 	Password string `json:"password"`
 }
 
+// RegisterResponse models the successful registration response with JWT token for immediate sign-in.
+type RegisterResponse struct {
+	Token     string       `json:"token"`
+	ExpiresAt time.Time    `json:"expires_at"`
+	User      UserResponse `json:"user"`
+}
+
 // LoginResponse models the successful login response with JWT token.
 type LoginResponse struct {
 	Token     string       `json:"token"`
@@ -60,10 +67,20 @@ type UserResponse struct {
 }
 
 // Register creates a new user account with email/password validation and bcrypt hashing.
+func toUserResponse(u *domain.User) UserResponse {
+	return UserResponse{
+		ID:       u.ID,
+		Email:    u.Email,
+		FullName: u.FullName,
+		Role:     u.Role,
+	}
+}
+
+// Register creates a new user account with email/password validation, bcrypt hashing,
+// and an immediate JWT session token.
 // The first registered user is automatically assigned "admin" role;
-// all subsequent users receive "viewer" role.
-// (Simple bootstrap approach for academic project.)
-func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*UserResponse, error) {
+// all subsequent users receive "analyst" role so they can create treasuries and run optimizations.
+func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*RegisterResponse, error) {
 	// Validate email format
 	email := strings.TrimSpace(strings.ToLower(input.Email))
 	if !domain.ValidateEmail(email) {
@@ -84,11 +101,11 @@ func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*UserR
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	// Determine role: first user is admin, rest are viewer
-	role := domain.RoleViewer
+	// Determine role: first user is admin, subsequent users default to analyst
+	role := domain.RoleAnalyst
 	count, err := s.userRepo.Count(ctx)
 	if err != nil {
-		log.Printf("[WARN] Failed to count users for role bootstrap, defaulting to viewer: %v", err)
+		log.Printf("[WARN] Failed to count users for role bootstrap, defaulting to analyst: %v", err)
 	} else if count == 0 {
 		role = domain.RoleAdmin
 	}
@@ -108,6 +125,11 @@ func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*UserR
 		return nil, err
 	}
 
+	token, expiresAt, err := s.generateToken(saved)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate token: %w", err)
+	}
+
 	// Best-effort audit log (email in metadata, never password)
 	if s.auditSvc != nil {
 		s.auditSvc.Record(ctx, domain.ActionAuthRegistered, "user", &saved.ID, map[string]any{
@@ -116,11 +138,10 @@ func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*UserR
 		})
 	}
 
-	return &UserResponse{
-		ID:       saved.ID,
-		Email:    saved.Email,
-		FullName: saved.FullName,
-		Role:     saved.Role,
+	return &RegisterResponse{
+		Token:     token,
+		ExpiresAt: expiresAt,
+		User:      toUserResponse(saved),
 	}, nil
 }
 
@@ -179,12 +200,7 @@ func (s *AuthService) Login(ctx context.Context, input LoginInput) (*LoginRespon
 	return &LoginResponse{
 		Token:     token,
 		ExpiresAt: expiresAt,
-		User: UserResponse{
-			ID:       user.ID,
-			Email:    user.Email,
-			FullName: user.FullName,
-			Role:     user.Role,
-		},
+		User:      toUserResponse(user),
 	}, nil
 }
 
@@ -206,6 +222,8 @@ func (s *AuthService) GetCurrentUser(ctx context.Context) (*UserResponse, error)
 		FullName: user.FullName,
 		Role:     user.Role,
 	}, nil
+	resp := toUserResponse(user)
+	return &resp, nil
 }
 
 // generateToken creates an HS256 JWT token with sub, email, role, exp, iat claims.

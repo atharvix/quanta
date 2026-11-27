@@ -109,6 +109,7 @@ class AlphaBetaPruningSolver:
             )
 
         best_action: Optional[FinancialAction] = None
+        best_next_st = None
         best_val = -float("inf")
         alpha = -float("inf")
         beta = float("inf")
@@ -124,10 +125,26 @@ class AlphaBetaPruningSolver:
             if val > best_val:
                 best_val = val
                 best_action = act
+                best_next_st = next_st
             alpha = max(alpha, val)
 
-        # Identify worst-case shock under best action
-        worst_shock_name = "Severe Equity & Credit Crash"
+        # Identify actual worst-case shock directly against the chosen defensive state
+        worst_shock_name = MARKET_SHOCK_ACTIONS[0].shock_name
+        if best_next_st is not None:
+            worst_shock_val = float("inf")
+            for shock in MARKET_SHOCK_ACTIONS:
+                shock_node = TreasuryGameState(
+                    financial_state=best_next_st,
+                    assets_map=problem.assets_map,
+                    is_max_turn=True,
+                    active_shock=shock,
+                    depth=2,
+                )
+                shock_val = shock_node.evaluate_payoff(problem.risk_tolerance)
+                if shock_val < worst_shock_val:
+                    worst_shock_val = shock_val
+                    worst_shock_name = shock.shock_name
+
         elapsed_ms = (time.perf_counter() - start_time) * 1000.0
 
         explanation = (

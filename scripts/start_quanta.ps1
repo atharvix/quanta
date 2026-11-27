@@ -259,9 +259,16 @@ while ((Get-Date) -lt $deadline) {
         }
     }
 
-    if (-not $healthyMap['Frontend'] -and (Test-TcpPort -TargetHost 'localhost' -Port 3000 -TimeoutMs 1000)) {
-        $healthyMap['Frontend'] = $true
-        Write-Ok "SvelteKit Frontend dev server is listening (http://localhost:3000)"
+    if (-not $healthyMap['Frontend']) {
+        try {
+            $feResp = Invoke-WebRequest -Uri 'http://localhost:3000/' -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
+            if ($feResp.StatusCode -lt 500) {
+                $healthyMap['Frontend'] = $true
+                Write-Ok "SvelteKit Frontend dev server is listening (http://localhost:3000)"
+            }
+        } catch {
+            # Wait and retry
+        }
     }
 
     if ($healthyMap.Count -ge 4) {

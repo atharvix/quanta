@@ -109,7 +109,7 @@
 
     try {
       await register(email.trim(), password, fullName.trim());
-      await goto('/login?registered=1');
+      await goto('/');
     } catch (err: unknown) {
       if (err instanceof ApiError) {
         if (err.status === 409) {

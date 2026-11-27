@@ -64,8 +64,8 @@ export async function login(email: string, password: string): Promise<LoginRespo
   return res;
 }
 
-export async function register(email: string, password: string, fullName?: string): Promise<User> {
-  const res = await api<User>('/api/v1/auth/register', {
+export async function register(email: string, password: string, fullName?: string): Promise<LoginResponse> {
+  const res = await api<LoginResponse>('/api/v1/auth/register', {
     method: 'POST',
     body: {
       email,
@@ -73,6 +73,9 @@ export async function register(email: string, password: string, fullName?: strin
       full_name: fullName || ''
     }
   });
+
+  token.set(res.token);
+  user.set(res.user);
   return res;
 }
 

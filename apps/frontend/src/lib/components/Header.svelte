@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { user, logout } from '$lib/auth';
+  import { isAdmin } from '$lib/roles';
   import ThemeToggle from './ThemeToggle.svelte';
 
   let {
@@ -26,32 +27,16 @@
     {
       id: 'n1',
       title: 'Gateway Cluster Active',
-      message: 'Go Core API Gateway on port 8080 responding normally.',
-      timestamp: '2m ago',
+      message: 'Go Core API Gateway on port 8080 managing authenticated requests.',
+      timestamp: 'Live',
       type: 'success',
       read: false
     },
     {
       id: 'n2',
-      title: 'Database Synchronized',
-      message: '18 corporate balance sheets loaded with ACID isolation.',
-      timestamp: '14m ago',
-      type: 'info',
-      read: false
-    },
-    {
-      id: 'n3',
-      title: 'Liquidity Floor Enforced',
-      message: 'Primary portfolio meeting 25% mandatory liquid reserve.',
-      timestamp: '45m ago',
-      type: 'info',
-      read: true
-    },
-    {
-      id: 'n4',
-      title: 'Advisory Lock Concurrency',
-      message: 'Session transactional protection active on Postgres 16.',
-      timestamp: '1h ago',
+      title: 'Storage Concurrency Protection',
+      message: 'PostgreSQL advisory lock isolation enabled for treasury updates.',
+      timestamp: 'Active',
       type: 'info',
       read: true
     }
@@ -211,11 +196,13 @@
             {/each}
           </div>
 
-          <div class="notif-dropdown-footer">
-            <a href="/admin/audit-logs" class="notif-footer-link" onclick={() => (isNotifOpen = false)}>
-              View Security Audit Journal &rarr;
-            </a>
-          </div>
+          {#if isAdmin($user?.role)}
+            <div class="notif-dropdown-footer">
+              <a href="/admin/audit-logs" class="notif-footer-link" onclick={() => (isNotifOpen = false)}>
+                View Security Audit Journal &rarr;
+              </a>
+            </div>
+          {/if}
         </div>
       {/if}
     </div>

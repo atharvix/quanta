@@ -1,4 +1,5 @@
 import { browser } from '$app/env';
+import { token, user } from './auth';
 import type {
   OptimizationRequestPayload,
   OptimizationCompareRequestPayload,
@@ -38,9 +39,9 @@ export async function api<T = any>(path: string, options: ApiRequestOptions = {}
   }
 
   if (browser) {
-    const token = localStorage.getItem('quanta_token');
-    if (token && !headers.has('Authorization')) {
-      headers.set('Authorization', `Bearer ${token}`);
+    const authToken = localStorage.getItem('quanta_token');
+    if (authToken && !headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${authToken}`);
     }
   }
 
@@ -51,6 +52,8 @@ export async function api<T = any>(path: string, options: ApiRequestOptions = {}
   });
 
   if (response.status === 401) {
+    token.set(null);
+    user.set(null);
     if (browser) {
       localStorage.removeItem('quanta_token');
       localStorage.removeItem('quanta_user');

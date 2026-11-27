@@ -35,7 +35,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.authService.Register(r.Context(), input)
+	resp, err := h.authService.Register(r.Context(), input)
 	if err != nil {
 		var valErr *domain.ValidationError
 		if errors.As(err, &valErr) {
@@ -54,7 +54,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	WriteJSON(w, http.StatusCreated, user)
+	WriteJSON(w, http.StatusCreated, resp)
 }
 
 // Login handles POST /api/v1/auth/login.

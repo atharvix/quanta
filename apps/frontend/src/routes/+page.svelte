@@ -12,17 +12,23 @@
     TreasuryLiabilitiesResponse,
     AuditLogRecord,
     AuditLogsListResponse,
-    SystemHealthResponse
+    SystemHealthResponse,
+    StrategiesListResponse
   } from '$lib/types';
   import { formatCurrency, formatNumber, formatPercent, formatDate } from '$lib/format';
+  import { calculateBalanceSheet, calculatePortfolioDebt } from '$lib/financial';
+  import { extractAllocations } from '$lib/risk';
 
   // --- Core State ---
   let treasuries = $state<Treasury[]>([]);
+  let liabilitiesMap = $state<Record<string, Liability[]>>({});
   let isLoadingTreasuries = $state(true);
   let treasuriesError = $state<string | null>(null);
 
   let primaryAssets = $state<Asset[]>([]);
   let primaryLiabilities = $state<Liability[]>([]);
+  let primaryStrategyAllocations = $state<Record<string, number> | null>(null);
+  let primaryStrategyAlgo = $state<string | null>(null);
   let isLoadingAssets = $state(true);
 
   let auditLogs = $state<AuditLogRecord[]>([]);
@@ -57,9 +63,7 @@
           calculationType: 'estimated',
           badgeText: 'ESTIMATED PRORATION',
           badgeClass: 'pill-warning',
-          methodology: 'Model-derived straight-line daily proration (1/365) of $270.0M committed facilities across 18 portfolios ($15M each @ 6.5% interest, 12M maturity). Stored granular payment schedule unavailable; figures represent assumption-based liquidity reservations.',
-          snapshotLabel: '$270.0M total balance sheet obligation',
-          chartLiabilityLabel: 'Est. Daily Debt Service (Prorated)',
+          chartLiabilityLabel: 'Est. Daily Debt Service',
           cutoffMs: 24 * 60 * 60 * 1000
         };
       case '1W':
@@ -72,69 +76,66 @@
           calculationType: 'estimated',
           badgeText: 'ESTIMATED PRORATION',
           badgeClass: 'pill-warning',
-          methodology: 'Model-derived straight-line 7-day proration (7/365) of $270.0M committed facilities across 18 portfolios ($15M each @ 6.5% interest, 12M maturity). Stored granular payment schedule unavailable; figures represent assumption-based liquidity reservations.',
-          snapshotLabel: '$270.0M total balance sheet obligation',
-          chartLiabilityLabel: 'Est. Weekly Debt Service (Prorated)',
+          chartLiabilityLabel: 'Est. Weekly Debt Service',
           cutoffMs: 7 * 24 * 60 * 60 * 1000
         };
       case '1M':
       default:
         return {
           tag: '1M CONSOLIDATED',
-          title: 'Monthly Consolidated Balance Sheet (Default)',
-          desc: 'Consolidated capital across all active portfolios & registered senior facilities.',
+          title: 'Monthly Consolidated Balance Sheet',
+          desc: 'Consolidated capital across all active portfolios & registered debt facilities.',
           liabilitiesMultiplier: 1.0,
-          liabilitiesLabel: 'Senior Credit Facilities ($15M / Portfolio)',
+          liabilitiesLabel: 'Registered Debt Principal',
           calculationType: 'actual_snapshot',
           badgeText: 'BALANCE SHEET SNAPSHOT',
           badgeClass: 'pill-neutral',
-          methodology: 'Actual balance sheet snapshot representing total registered senior revolving facility principal commitments ($15M across 18 portfolios = $270.0M). Reflects committed balance sheet obligations, not monthly cash outflow.',
-          snapshotLabel: '$270.0M total committed facility balance',
-          chartLiabilityLabel: 'Senior Credit Facility ($15M Snapshot)',
+          chartLiabilityLabel: 'Registered Debt Principal',
           cutoffMs: 30 * 24 * 60 * 60 * 1000
         };
       case '1Y':
         return {
           tag: '1Y ANNUAL',
-          title: 'Fiscal Year 2026 Consolidated Capital',
+          title: 'Fiscal Year Consolidated Capital',
           desc: 'Annualized capital preservation, debt obligations, and solvency coverage.',
           liabilitiesMultiplier: 1.0,
-          liabilitiesLabel: 'Annual Senior Facilities ($15M / Portfolio)',
+          liabilitiesLabel: 'Annual Debt Commitments',
           calculationType: 'actual_snapshot',
           badgeText: 'BALANCE SHEET SNAPSHOT',
           badgeClass: 'pill-neutral',
-          methodology: 'Actual balance sheet snapshot representing total annualized revolving facility commitments ($15M across 18 portfolios = $270.0M principal, 12-month maturity).',
-          snapshotLabel: '$270.0M total committed facility balance',
-          chartLiabilityLabel: 'Senior Credit Facility ($15M Snapshot)',
+          chartLiabilityLabel: 'Registered Debt Principal',
           cutoffMs: 365 * 24 * 60 * 60 * 1000
         };
     }
   });
 
   const treasuryCount = $derived(treasuries.length);
+  const balanceSheet = $derived(calculateBalanceSheet(treasuries, liabilitiesMap));
+  const totalAssetsSum = $derived(balanceSheet.summary.totalAssets);
+  const baseTotalLiabilities = $derived(balanceSheet.summary.totalLiabilities);
 
-  const totalAssetsSum = $derived.by(() => {
-    if (!treasuries.length) return 0;
-    return treasuries.reduce((sum, t) => sum + (Number(t.total_capital) || 0), 0);
-  });
-
-  // Dynamic liabilities based on selected timeframe horizon
-  const totalLiabilitiesSum = $derived.by(() => {
-    if (!treasuries.length) return 0;
-    const baseLiab = treasuries.length * 15_000_000;
-    return baseLiab * timeframeHorizon.liabilitiesMultiplier;
-  });
-
+  // Dynamic liabilities derived from persisted PostgreSQL liabilities & selected horizon
+  const totalLiabilitiesSum = $derived(baseTotalLiabilities * timeframeHorizon.liabilitiesMultiplier);
   const netCapitalSurplus = $derived(Math.max(0, totalAssetsSum - totalLiabilitiesSum));
 
+  const methodologyNote = $derived.by(() => {
+    const scope = `${formatMillions(baseTotalLiabilities)} persisted principal across ${treasuryCount} ${treasuryCount === 1 ? 'portfolio' : 'portfolios'}`;
+    if (selectedTimeframe === '1D') {
+      return `Straight-line daily proration (1/365) of ${scope}.`;
+    }
+    if (selectedTimeframe === '1W') {
+      return `Straight-line 7-day proration (7/365) of ${scope}.`;
+    }
+    return `Consolidated snapshot summing persisted corporate liability principals (${scope}).`;
+  });
+
   const avgLiquidityRatio = $derived.by(() => {
-    if (!treasuries.length) return 0.245;
-    const sum = treasuries.reduce((acc, t) => acc + (Number(t.min_liquidity_ratio) || 0), 0);
-    return sum / treasuries.length;
+    if (!treasuries.length) return 0;
+    return balanceSheet.summary.meanLiquidityFloor;
   });
 
   const avgRiskScore = $derived.by(() => {
-    if (!treasuries.length) return 0.32;
+    if (!treasuries.length) return 0;
     const sum = treasuries.reduce((acc, t) => acc + (Number(t.risk_tolerance) || 0), 0);
     return sum / treasuries.length;
   });
@@ -142,7 +143,7 @@
   const liquidReserves = $derived(totalAssetsSum * avgLiquidityRatio);
 
   const coverageRatio = $derived.by(() => {
-    if (totalLiabilitiesSum <= 0) return '5.93';
+    if (totalLiabilitiesSum <= 0) return 'N/A';
     return (totalAssetsSum / totalLiabilitiesSum).toFixed(2);
   });
 
@@ -154,7 +155,7 @@
       .slice(0, 5)
       .map((t) => {
         const cap = Number(t.total_capital) || 0;
-        const liab = 15_000_000 * timeframeHorizon.liabilitiesMultiplier;
+        const liab = calculatePortfolioDebt(liabilitiesMap[t.id]) * timeframeHorizon.liabilitiesMultiplier;
         return {
           id: t.id,
           name: t.name.length > 20 ? t.name.substring(0, 18) + '...' : t.name,
@@ -168,6 +169,10 @@
         };
       });
   });
+
+  const chartScaleMax = $derived(
+    Math.max(10, ...topTreasuries.flatMap((t) => [t.capital, t.liability]))
+  );
 
   const timeframeDateRange = $derived.by(() => {
     const now = new Date();
@@ -215,56 +220,39 @@
     dashOffset: string;
   }
 
-  const allocationSegments = $derived.by<AllocationSegment[]>(() => {
-    const capital = primaryTreasury ? Number(primaryTreasury.total_capital) : 150_000_000;
-    const circumference = 2 * Math.PI * 64; // ~402.12
+  const allocationSegments: AllocationSegment[] = $derived.by(() => {
 
-    const specs = [
-      {
-        id: 'gov_bond',
-        name: 'Government Bonds',
-        type: 'Gov Bond',
-        pct: 45,
-        expectedReturn: 0.07,
-        risk: 0.05,
-        liquidity: 0.95,
-        color: '#315fea'
-      },
-      {
-        id: 'bluechip_equity',
-        name: 'Bluechip Equity Index',
-        type: 'Equity',
-        pct: 35,
-        expectedReturn: 0.12,
-        risk: 0.18,
-        liquidity: 0.85,
-        color: '#059669'
-      },
-      {
-        id: 'commercial_paper',
-        name: 'Commercial Paper',
-        type: 'Corp Debt',
-        pct: 20,
-        expectedReturn: 0.08,
-        risk: 0.08,
-        liquidity: 0.75,
-        color: '#d97706'
-      }
-    ];
+    if (!primaryTreasury || primaryAssets.length === 0) return [];
+
+    const capital = Number(primaryTreasury.total_capital) || 0;
+    const circumference = 2 * Math.PI * 64; // ~402.12
+    const palette = ['#315fea', '#059669', '#d97706', '#6d28d9', '#0284c7', '#dc2626'];
+    const stratSum = primaryStrategyAllocations
+      ? primaryAssets.reduce((sum, a) => sum + (primaryStrategyAllocations?.[a.id] || 0), 0)
+      : 0;
+    const equalPct = Number((100 / primaryAssets.length).toFixed(2));
 
     let currentOffset = 0;
-    return specs.map((item) => {
-      const sliceLength = (item.pct / 100) * circumference;
+    return primaryAssets.map((asset, idx) => {
+      const pct = stratSum > 0
+        ? Number((((primaryStrategyAllocations?.[asset.id] || 0) / stratSum) * 100).toFixed(2))
+        : idx === primaryAssets.length - 1
+          ? Number((100 - equalPct * (primaryAssets.length - 1)).toFixed(2))
+          : equalPct;
+      const amount = stratSum > 0
+        ? (primaryStrategyAllocations?.[asset.id] || 0)
+        : capital * (pct / 100);
+      const sliceLength = (pct / 100) * circumference;
       const segment: AllocationSegment = {
-        id: item.id,
-        name: item.name,
-        type: item.type,
-        percentage: item.pct,
-        amount: capital * (item.pct / 100),
-        expectedReturn: item.expectedReturn,
-        risk: item.risk,
-        liquidity: item.liquidity,
-        color: item.color,
+        id: asset.id,
+        name: asset.name,
+        type: asset.asset_type,
+        percentage: pct,
+        amount,
+        expectedReturn: Number(asset.expected_return) || 0,
+        risk: Number(asset.risk) || 0,
+        liquidity: Number(asset.liquidity) || 0,
+        color: palette[idx % palette.length],
         dashArray: `${sliceLength.toFixed(2)} ${circumference.toFixed(2)}`,
         dashOffset: (-currentOffset).toFixed(2)
       };
@@ -332,36 +320,78 @@
     try {
       const res = await api<TreasuriesListResponse>('/api/v1/treasuries?limit=50');
       treasuries = Array.isArray(res.data) ? res.data : [];
+
+      const nextMap: Record<string, Liability[]> = {};
+      await Promise.allSettled(
+        treasuries.map(async (t) => {
+          try {
+            const liabRes = await api<TreasuryLiabilitiesResponse>(`/api/v1/treasuries/${t.id}/liabilities`);
+            nextMap[t.id] = Array.isArray(liabRes.data) ? liabRes.data : [];
+          } catch {
+            nextMap[t.id] = [];
+          }
+        })
+      );
+      liabilitiesMap = nextMap;
     } catch (err: unknown) {
       treasuriesError = err instanceof Error ? err.message : 'Failed to load treasuries.';
       treasuries = [];
+      liabilitiesMap = {};
     } finally {
       isLoadingTreasuries = false;
     }
   }
 
   async function fetchPrimaryAssets() {
+    if (!primaryTreasury?.id) {
+      primaryAssets = [];
+      primaryLiabilities = [];
+      primaryStrategyAllocations = null;
+      primaryStrategyAlgo = null;
+      isLoadingAssets = false;
+      return;
+    }
+
     isLoadingAssets = true;
     try {
-      const targetId = primaryTreasury?.id || 'f244e72e-cdbc-4e63-84aa-ce75b73f1218';
-      const [assetsRes, liabsRes] = await Promise.allSettled([
-        api<TreasuryAssetsResponse>(`/api/v1/treasuries/${targetId}/assets`),
-        api<TreasuryLiabilitiesResponse>(`/api/v1/treasuries/${targetId}/liabilities`)
+      const [assetsRes, liabsRes, stratRes] = await Promise.allSettled([
+        api<TreasuryAssetsResponse>(`/api/v1/treasuries/${primaryTreasury.id}/assets`),
+        api<TreasuryLiabilitiesResponse>(`/api/v1/treasuries/${primaryTreasury.id}/liabilities`),
+        api<StrategiesListResponse>(`/api/v1/treasuries/${primaryTreasury.id}/strategies?limit=1`)
       ]);
-      if (assetsRes.status === 'fulfilled' && assetsRes.value?.data) {
-        primaryAssets = assetsRes.value.data;
-      }
-      if (liabsRes.status === 'fulfilled' && liabsRes.value?.data) {
-        primaryLiabilities = liabsRes.value.data;
+      primaryAssets =
+        assetsRes.status === 'fulfilled' && Array.isArray(assetsRes.value?.data)
+          ? assetsRes.value.data
+          : [];
+      primaryLiabilities =
+        liabsRes.status === 'fulfilled' && Array.isArray(liabsRes.value?.data)
+          ? liabsRes.value.data
+          : [];
+      if (stratRes.status === 'fulfilled' && Array.isArray(stratRes.value?.data) && stratRes.value.data[0]?.allocations_json) {
+        const extracted = extractAllocations(stratRes.value.data[0].allocations_json, primaryAssets);
+        primaryStrategyAllocations = Object.keys(extracted).length > 0 ? extracted : null;
+        primaryStrategyAlgo = primaryStrategyAllocations ? stratRes.value.data[0].algorithm_used : null;
+      } else {
+        primaryStrategyAllocations = null;
+        primaryStrategyAlgo = null;
       }
     } catch {
-      // Fallback
+      primaryAssets = [];
+      primaryLiabilities = [];
+      primaryStrategyAllocations = null;
+      primaryStrategyAlgo = null;
     } finally {
       isLoadingAssets = false;
     }
   }
 
   async function fetchAuditLogs() {
+    if (!isAdmin($user?.role)) {
+      auditLogs = [];
+      isLoadingAuditLogs = false;
+      return;
+    }
+
     isLoadingAuditLogs = true;
     try {
       const res = await api<AuditLogsListResponse>('/api/v1/audit-logs?limit=100');
@@ -426,8 +456,7 @@
   async function refreshAll() {
     isRefreshing = true;
     await Promise.allSettled([
-      fetchTreasuries(),
-      fetchPrimaryAssets(),
+      fetchTreasuries().then(() => fetchPrimaryAssets()),
       fetchAuditLogs(),
       fetchHealth(true)
     ]);
@@ -592,8 +621,8 @@
           </span>
           <span class="kpi-caption">{timeframeHorizon.liabilitiesLabel}</span>
         </div>
-        <div class="kpi-methodology-note" title={timeframeHorizon.methodology}>
-          <span class="methodology-label">Methodology:</span> {timeframeHorizon.methodology}
+        <div class="kpi-methodology-note" title={methodologyNote}>
+          <span class="methodology-label">Methodology:</span> {methodologyNote}
         </div>
       </div>
     </div>
@@ -644,13 +673,27 @@
         {/if}
         <div class="kpi-subtext">
           <span class="pill-badge pill-risk-moderate">
-            Moderate Risk
+            {treasuries.length === 0 ? 'No Portfolios' : avgRiskScore < 0.35 ? 'Low Risk' : avgRiskScore < 0.65 ? 'Moderate Risk' : 'Elevated Risk'}
           </span>
           <span class="kpi-caption">Bounded tolerance (0.00 - 1.00)</span>
         </div>
       </div>
     </div>
   </section>
+
+  <!-- Onboarding Banner when Database Has No Treasuries -->
+  {#if !isLoadingTreasuries && treasuries.length === 0}
+    <div class="onboarding-banner" role="region" aria-label="Getting started">
+      <div class="onboarding-text">
+        <strong>Welcome to QUANTA.</strong> No corporate treasuries are configured yet. Create your first treasury portfolio to add assets, liabilities, and run AI capital allocations.
+      </div>
+      {#if canWrite($user?.role)}
+        <a href="/treasuries" class="action-btn action-btn-primary">Create Treasury Portfolio &rarr;</a>
+      {:else}
+        <a href="/treasuries" class="action-btn action-btn-secondary">View Treasuries &rarr;</a>
+      {/if}
+    </div>
+  {/if}
 
   <!-- Financial Visualizations Row: Assets vs Liabilities (60%) & Capital Allocation Donut (40%) -->
   <section class="visualizations-grid">
@@ -678,7 +721,7 @@
       <div class="timeframe-data-banner">
         <span class="banner-badge {timeframeHorizon.badgeClass}">{timeframeHorizon.badgeText}</span>
         <span class="banner-text">
-          <strong>{timeframeHorizon.liabilitiesLabel}:</strong> {timeframeHorizon.methodology}
+          <strong>{timeframeHorizon.liabilitiesLabel}:</strong> {methodologyNote}
         </span>
       </div>
 
@@ -688,17 +731,18 @@
             <div class="skeleton-shimmer chart-skeleton-block"></div>
           </div>
         {:else if topTreasuries.length === 0}
-          <div class="chart-empty-placeholder">
-            <p>No corporate treasuries registered yet.</p>
+          <div class="chart-empty-placeholder" style="flex-direction: column; gap: 0.75rem;">
+            <p style="margin: 0;">No corporate treasuries registered yet.</p>
+            <a href="/treasuries" class="card-link">Create a corporate treasury &rarr;</a>
           </div>
         {:else}
           <!-- Grouped Bar Chart Visualization -->
           <div class="grouped-chart-body">
             <!-- Y-Axis Value Labels -->
             <div class="chart-y-axis">
-              <span>$500M</span>
-              <span>$250M</span>
-              <span>$100M</span>
+              <span>{formatMillions(chartScaleMax)}</span>
+              <span>{formatMillions(chartScaleMax * 0.67)}</span>
+              <span>{formatMillions(chartScaleMax * 0.33)}</span>
               <span>$0</span>
             </div>
 
@@ -712,9 +756,8 @@
               <!-- Bar Groups for Each Treasury -->
               <div class="bars-columns-wrapper">
                 {#each topTreasuries as t}
-                  {@const maxCap = 500_000_000}
-                  {@const assetHeightPct = Math.min(100, Math.max(14, (t.capital / maxCap) * 100))}
-                  {@const liabHeightPct = Math.min(100, Math.max(8, (t.liability / maxCap) * 100))}
+                  {@const assetHeightPct = Math.min(100, Math.max(8, (t.capital / chartScaleMax) * 100))}
+                  {@const liabHeightPct = t.liability > 0 ? Math.min(100, Math.max(4, (t.liability / chartScaleMax) * 100)) : 2}
                   <a
                     href="/treasuries/{t.id}"
                     class="bar-group-col"
@@ -760,49 +803,63 @@
         <div>
           <h2 class="card-heading">Capital Allocation</h2>
           <p class="card-subheading">
-            Primary portfolio: {primaryTreasury?.name || 'Apex Institutional Capital 2026'}
+            {primaryTreasury ? `Primary portfolio: ${primaryTreasury.name}` : 'No primary corporate treasury yet'}
           </p>
         </div>
         <span class="pill-badge pill-neutral">
-          {formatMillions(primaryTreasury?.total_capital || 150_000_000)} Base
+          {primaryTreasury ? `${formatMillions(primaryTreasury.total_capital)} Base` : 'No Portfolio'}
         </span>
       </div>
 
-      <!-- Donut Chart & Center Stats -->
-      <div class="donut-chart-section">
-        <div class="donut-graphic-wrapper">
-          <svg class="donut-svg" viewBox="0 0 180 180" width="160" height="160">
-            <!-- Background Track -->
-            <circle
-              cx="90"
-              cy="90"
-              r="64"
-              fill="none"
-              stroke="var(--color-border-subtle)"
-              stroke-width="18"
-            />
-            <!-- Slices with Click Interaction -->
-            {#each allocationSegments as seg}
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
+      {#if isLoadingAssets || isLoadingTreasuries}
+        <div class="chart-loading-placeholder">
+          <div class="skeleton-shimmer chart-skeleton-block"></div>
+        </div>
+      {:else if !primaryTreasury}
+        <div class="chart-empty-placeholder" style="flex-direction: column; gap: 0.75rem;">
+          <p style="margin: 0;">Create a treasury portfolio to configure assets and view allocation breakdown.</p>
+          <a href="/treasuries" class="card-link">Go to Treasuries &rarr;</a>
+        </div>
+      {:else if allocationSegments.length === 0}
+        <div class="chart-empty-placeholder" style="flex-direction: column; gap: 0.75rem;">
+          <p style="margin: 0;">No persisted assets found for "{primaryTreasury.name}".</p>
+          <a href="/treasuries/{primaryTreasury.id}" class="card-link">Configure portfolio assets &rarr;</a>
+        </div>
+      {:else}
+        <div class="donut-chart-section">
+          <div class="donut-graphic-wrapper">
+            <svg class="donut-svg" viewBox="0 0 180 180" width="160" height="160">
+              <!-- Background Track -->
               <circle
                 cx="90"
                 cy="90"
                 r="64"
                 fill="none"
-                stroke={seg.color}
-                stroke-width={selectedSegmentId === seg.id ? '22' : '18'}
-                stroke-dasharray={seg.dashArray}
-                stroke-dashoffset={seg.dashOffset}
-                transform="rotate(-90 90 90)"
-                class="donut-slice-circle"
-                class:active-slice={selectedSegmentId === seg.id}
-                onclick={() => (selectedSegmentId = selectedSegmentId === seg.id ? null : seg.id)}
-                role="button"
-                tabindex="0"
-                aria-label="{seg.name}: {seg.percentage}%"
+                stroke="var(--color-border-subtle)"
+                stroke-width="18"
               />
-            {/each}
-          </svg>
+              <!-- Slices with Click Interaction -->
+              {#each allocationSegments as seg}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <circle
+                  cx="90"
+                  cy="90"
+                  r="64"
+                  fill="none"
+                  stroke={seg.color}
+                  stroke-width={selectedSegmentId === seg.id ? '22' : '18'}
+                  stroke-dasharray={seg.dashArray}
+                  stroke-dashoffset={seg.dashOffset}
+                  transform="rotate(-90 90 90)"
+                  class="donut-slice-circle"
+                  class:active-slice={selectedSegmentId === seg.id}
+                  onclick={() => (selectedSegmentId = selectedSegmentId === seg.id ? null : seg.id)}
+                  role="button"
+                  tabindex="0"
+                  aria-label="{seg.name}: {seg.percentage}%"
+                />
+              {/each}
+            </svg>
 
           <!-- Center Label (Reflects selected segment or total capital) -->
           <div class="donut-center-label">
@@ -811,40 +868,43 @@
               <span class="center-sub">{activeSegment.name}</span>
             {:else}
               <span class="center-val">
-                {formatMillions(primaryTreasury?.total_capital || 150_000_000)}
+                {formatMillions(primaryTreasury.total_capital)}
               </span>
               <span class="center-sub">Allocated</span>
             {/if}
           </div>
         </div>
 
-        <!-- Asset Distribution Breakdown List -->
-        <div class="allocation-breakdown-list">
-          {#each allocationSegments as seg}
-            <button
-              type="button"
-              class="allocation-item"
-              class:selected={selectedSegmentId === seg.id}
-              onclick={() => (selectedSegmentId = selectedSegmentId === seg.id ? null : seg.id)}
-            >
-              <div class="alloc-left">
-                <span class="alloc-color-dot" style="background-color: {seg.color};"></span>
-                <div class="alloc-meta">
-                  <span class="alloc-name">{seg.name}</span>
-                  <span class="alloc-type-tag">{seg.type}</span>
+          <!-- Asset Distribution Breakdown List -->
+          <div class="allocation-breakdown-list">
+            {#each allocationSegments as seg}
+              <button
+                type="button"
+                class="allocation-item"
+                class:selected={selectedSegmentId === seg.id}
+                onclick={() => (selectedSegmentId = selectedSegmentId === seg.id ? null : seg.id)}
+              >
+                <div class="alloc-left">
+                  <span class="alloc-color-dot" style="background-color: {seg.color};"></span>
+                  <div class="alloc-meta">
+                    <span class="alloc-name">{seg.name}</span>
+                    <span class="alloc-type-tag">{seg.type}</span>
+                  </div>
                 </div>
-              </div>
-              <div class="alloc-right">
-                <span class="alloc-weight">{seg.percentage}%</span>
-                <span class="alloc-sub">{formatMillions(seg.amount)} &middot; Return {(seg.expectedReturn * 100).toFixed(0)}%</span>
-              </div>
-            </button>
-          {/each}
+                <div class="alloc-right">
+                  <span class="alloc-weight">{seg.percentage}%</span>
+                  <span class="alloc-sub">{formatMillions(seg.amount)} &middot; Return {(seg.expectedReturn * 100).toFixed(0)}%</span>
+                </div>
+              </button>
+            {/each}
+          </div>
         </div>
-      </div>
+      {/if}
 
       <div class="card-bottom-bar">
-        <span class="info-note">A* &amp; Bayesian Risk Optimized</span>
+        <span class="info-note">
+          {primaryStrategyAlgo ? `Optimized via ${primaryStrategyAlgo.toUpperCase()}` : 'Equal-Weight Baseline (1/N)'}
+        </span>
         <a href="/capital-allocation" class="card-link">
           Inspect allocations &rarr;
         </a>
@@ -865,7 +925,12 @@
       </div>
 
       <div class="activity-feed">
-        {#if isLoadingAuditLogs}
+        {#if !isAdmin($user?.role)}
+          <div class="empty-feed-wrap">
+            <p class="empty-feed-text">Audit trail access requires Admin privileges.</p>
+            <p class="empty-feed-hint">Balance sheet statements remain available in Financial Reports.</p>
+          </div>
+        {:else if isLoadingAuditLogs}
           <div class="skeleton-shimmer feed-skeleton"></div>
         {:else if filteredAuditLogs.length === 0}
           <div class="empty-feed-wrap">
@@ -923,7 +988,7 @@
           <h2 class="card-heading">Balance Sheet Health</h2>
           <p class="card-subheading">Capital adequacy &amp; solvency status</p>
         </div>
-        <span class="pill-badge pill-positive">Solvent</span>
+        <span class="pill-badge pill-positive">{totalLiabilitiesSum > totalAssetsSum ? 'Deficit' : 'Solvent'}</span>
       </div>
 
       <div class="health-metrics-list">
@@ -949,9 +1014,9 @@
         <div class="health-metric-row">
           <div class="health-metric-meta">
             <span class="health-metric-title">Debt Coverage Multiple</span>
-            <span class="health-metric-sub">Total capital multiple over senior debt</span>
+            <span class="health-metric-sub">Total capital multiple over registered debt</span>
           </div>
-          <span class="health-metric-val">{coverageRatio}x</span>
+          <span class="health-metric-val">{coverageRatio === 'N/A' ? 'N/A' : `${coverageRatio}x`}</span>
         </div>
 
         <!-- Metric 4: Concurrency Engine -->
@@ -1018,7 +1083,7 @@
             <span class="node-status-dot" class:dot-active={isDbUp} class:dot-down={!isDbUp}></span>
             <div class="node-meta">
               <span class="node-title">PostgreSQL Storage</span>
-              <span class="node-desc">Port 5432 &middot; 18 Portfolios</span>
+              <span class="node-desc">Port 5432 &middot; {treasuryCount} {treasuryCount === 1 ? 'Portfolio' : 'Portfolios'}</span>
             </div>
           </div>
           <span class="node-stat-pill">Connected</span>
@@ -1141,6 +1206,24 @@
 
 <style>
   /* Base Container Layout */
+  .onboarding-banner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: 1rem 1.25rem;
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-primary);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .onboarding-text {
+    font-size: 0.875rem;
+    color: var(--color-text);
+  }
+
   .dashboard-root {
     display: flex;
     flex-direction: column;

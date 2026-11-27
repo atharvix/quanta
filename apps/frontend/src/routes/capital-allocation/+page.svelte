@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { api } from '$lib/api';
+  import { api, ApiError } from '$lib/api';
   import type { Treasury, TreasuriesListResponse, Asset, TreasuryAssetsResponse } from '$lib/types';
   import { formatPercent } from '$lib/format';
   import { calculateCapitalAllocation } from '$lib/financial';
@@ -9,9 +9,11 @@
   let selectedTreasuryId = $state<string>('');
   let assets = $state<Asset[]>([]);
   let isLoading = $state(true);
+  let errorMessage = $state<string | null>(null);
 
   async function loadTreasuries() {
     isLoading = true;
+    errorMessage = null;
     try {
       const res = await api<TreasuriesListResponse>('/api/v1/treasuries?limit=50');
       treasuries = Array.isArray(res.data) ? res.data : [];
@@ -19,9 +21,17 @@
       if (apex) {
         selectedTreasuryId = apex.id;
         await loadAssets(apex.id);
+      } else {
+        assets = [];
       }
-    } catch {
+    } catch (err: unknown) {
       treasuries = [];
+      assets = [];
+      if (err instanceof ApiError && err.status === 403) {
+        errorMessage = 'Access denied: Insufficient permissions to list corporate treasuries.';
+      } else {
+        errorMessage = err instanceof Error ? err.message : 'Failed to load corporate treasuries.';
+      }
     } finally {
       isLoading = false;
     }
@@ -29,11 +39,23 @@
 
   async function loadAssets(id: string) {
     if (!id) return;
+    if (!id) {
+      assets = [];
+      return;
+    }
+    errorMessage = null;
     try {
       const res = await api<TreasuryAssetsResponse>(`/api/v1/treasuries/${id}/assets`);
       assets = Array.isArray(res.data) ? res.data : [];
-    } catch {
+    } catch (err: unknown) {
       assets = [];
+      if (err instanceof ApiError && err.status === 403) {
+        errorMessage = 'Access denied: Insufficient permissions to view assets for this corporate treasury.';
+      } else if (err instanceof ApiError && err.status === 404) {
+        errorMessage = 'Selected corporate treasury was not found.';
+      } else {
+        errorMessage = err instanceof Error ? err.message : 'Failed to load financial assets.';
+      }
     }
   }
 
@@ -137,7 +159,13 @@
       <span class="tag-status">{allocation.label}</span>
     </div>
 
-    {#if assets.length === 0}
+    {#if errorMessage}
+      <div class="alert-error" role="alert">{errorMessage}</div>
+    {:else if treasuries.length === 0 && !isLoading}
+      <div class="empty-state">
+        No corporate treasuries found. <a href="/treasuries" style="color: var(--color-primary); font-weight: 600;">Create your first treasury &rarr;</a>
+      </div>
+    {:else if assets.length === 0}
       <div class="empty-state">No financial assets configured for this treasury. Configure assets in treasury details to establish allocation.</div>
     {:else}
       <div class="assets-table-wrap">
@@ -411,6 +439,16 @@
   .font-bold { font-weight: 700; }
   .text-right { text-align: right; }
   .text-center { text-align: center; }
+
+  .alert-error {
+    padding: 0.875rem 1rem;
+    border-radius: var(--radius);
+    background-color: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    color: var(--color-danger, #ef4444);
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
 
   .empty-state {
     padding: 2.5rem;

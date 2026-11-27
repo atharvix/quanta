@@ -190,6 +190,7 @@ func (r *PgxUserRepository) List(ctx context.Context) ([]domain.User, error) {
 	defer rows.Close()
 
 	var users []domain.User
+	users = make([]domain.User, 0)
 	for rows.Next() {
 		var u domain.User
 		var role string

@@ -4,8 +4,9 @@ import "context"
 
 // CheckTreasuryAccess enforces resource-level authorization:
 // - Platform Admin has unrestricted access to all corporate treasuries.
-// - Analyst and Viewer can only access a treasury they own (OwnerID matches authenticated caller ID).
-// - Unassigned treasuries (OwnerID == nil) cannot be accessed by non-admins.
+// - Analyst and Viewer can access a treasury they own (OwnerID matches authenticated caller ID).
+// - Unassigned/legacy treasuries (OwnerID == nil or empty) are accessible to Admin and Analyst roles,
+//   while Viewer access is denied.
 // - Unauthenticated internal/unit-test contexts on unassigned treasuries are permitted.
 func CheckTreasuryAccess(ctx context.Context, treasury *Treasury) error {
 	if treasury == nil {
@@ -27,9 +28,9 @@ func CheckTreasuryAccess(ctx context.Context, treasury *Treasury) error {
 		return nil
 	}
 
-	// Treasury is unassigned (OwnerID == nil):
-	// Non-admin callers (such as Analyst) cannot access unassigned/legacy treasuries.
-	if callerRole != "" {
+	// Treasury is unassigned (OwnerID == nil or empty):
+	// Allow Analysts (and unauthenticated internal test contexts) while blocking Viewers.
+	if callerRole == RoleViewer {
 		return ErrForbidden
 	}
 

@@ -149,6 +149,7 @@ func (r *PgxFinancialProblemRepository) List(ctx context.Context, limit, offset 
 	defer rows.Close()
 
 	var problems []domain.FinancialProblemEntity
+	problems = make([]domain.FinancialProblemEntity, 0)
 	for rows.Next() {
 		var p domain.FinancialProblemEntity
 		if err := rows.Scan(

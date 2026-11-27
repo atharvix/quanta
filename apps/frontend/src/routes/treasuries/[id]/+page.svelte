@@ -197,40 +197,38 @@
     { value: 'best_first', label: 'Best-First Greedy Search (best_first)' }
   ];
 
-  function loadSampleAssets() {
-    assets = [
-      {
-        id: 'gov_bond',
-        name: 'Government Bonds',
-        asset_type: 'gov_bond',
-        cost: 0.001,
-        expected_return: 0.07,
-        risk: 0.05,
-        liquidity: 0.95,
-        volatility: 0.03
-      },
-      {
-        id: 'bluechip_equity',
-        name: 'Bluechip Equity Index',
-        asset_type: 'equity',
-        cost: 0.002,
-        expected_return: 0.12,
-        risk: 0.18,
-        liquidity: 0.85,
-        volatility: 0.15
-      },
-      {
-        id: 'commercial_paper',
-        name: 'Corporate Commercial Paper',
-        asset_type: 'corp_bond',
-        cost: 0.001,
-        expected_return: 0.08,
-        risk: 0.08,
-        liquidity: 0.75,
-        volatility: 0.06
-      }
-    ];
-  }
+  const STARTER_ASSETS: Asset[] = [
+    {
+      id: 'gov_bond',
+      name: 'Government Bonds',
+      asset_type: 'gov_bond',
+      cost: 0.001,
+      expected_return: 0.07,
+      risk: 0.05,
+      liquidity: 0.95,
+      volatility: 0.03
+    },
+    {
+      id: 'bluechip_equity',
+      name: 'Bluechip Equity Index',
+      asset_type: 'equity',
+      cost: 0.002,
+      expected_return: 0.12,
+      risk: 0.18,
+      liquidity: 0.85,
+      volatility: 0.15
+    },
+    {
+      id: 'commercial_paper',
+      name: 'Corporate Commercial Paper',
+      asset_type: 'corp_bond',
+      cost: 0.001,
+      expected_return: 0.08,
+      risk: 0.08,
+      liquidity: 0.75,
+      volatility: 0.06
+    }
+  ];
 
   function loadSampleLiabilities() {
     liabilities = [
@@ -245,24 +243,35 @@
       }
     ];
   }
+  const STARTER_LIABILITIES: Liability[] = [
+    {
+      id: 'senior_loan',
+      name: 'Senior Revolving Facility',
+      principal: 15.0,
+      interest_rate: 0.065,
+      maturity_months: 12,
+      priority: 1,
+      is_mandatory_reserve: true
+    }
+  ];
+
+  let isSavingStarter = $state(false);
 
   async function fetchAssets() {
     isLoadingAssets = true;
     assetsError = null;
     try {
       const res = await api<TreasuryAssetsResponse>(`/api/v1/treasuries/${treasuryId}/assets`);
-      if (res.data && res.data.length > 0) {
-        assets = res.data;
-      } else {
-        loadSampleAssets();
-      }
+      assets = Array.isArray(res.data) ? res.data : [];
     } catch (err: unknown) {
-      if (err instanceof ApiError) {
+      assets = [];
+      if (err instanceof ApiError && err.status === 403) {
+        assetsError = 'Forbidden: Access to view or modify assets for this treasury is restricted.';
+      } else if (err instanceof ApiError) {
         assetsError = err.message || 'Failed to retrieve assets.';
       } else {
         assetsError = 'Failed to load assets.';
       }
-      loadSampleAssets();
     } finally {
       isLoadingAssets = false;
     }
@@ -273,20 +282,68 @@
     liabilitiesError = null;
     try {
       const res = await api<TreasuryLiabilitiesResponse>(`/api/v1/treasuries/${treasuryId}/liabilities`);
-      if (res.data && res.data.length > 0) {
-        liabilities = res.data;
-      } else {
-        loadSampleLiabilities();
-      }
+      liabilities = Array.isArray(res.data) ? res.data : [];
     } catch (err: unknown) {
-      if (err instanceof ApiError) {
+      liabilities = [];
+      if (err instanceof ApiError && err.status === 403) {
+        liabilitiesError = 'Forbidden: Access to view or modify liabilities for this treasury is restricted.';
+      } else if (err instanceof ApiError) {
         liabilitiesError = err.message || 'Failed to retrieve liabilities.';
       } else {
         liabilitiesError = 'Failed to load liabilities.';
       }
-      loadSampleLiabilities();
     } finally {
       isLoadingLiabilities = false;
+    }
+  }
+
+  async function saveStarterPortfolioToDatabase() {
+    if (isSavingStarter) return;
+    isSavingStarter = true;
+    actionErrorMessage = null;
+    actionSuccessMessage = null;
+
+    try {
+      for (const item of STARTER_ASSETS) {
+        try {
+          await api<Asset>(`/api/v1/treasuries/${treasuryId}/assets`, {
+            method: 'POST',
+            body: item
+          });
+        } catch (err: unknown) {
+          if (!(err instanceof ApiError && err.status === 409)) {
+            throw err;
+          }
+        }
+      }
+
+      for (const item of STARTER_LIABILITIES) {
+        try {
+          await api<Liability>(`/api/v1/treasuries/${treasuryId}/liabilities`, {
+            method: 'POST',
+            body: item
+          });
+        } catch (err: unknown) {
+          if (!(err instanceof ApiError && err.status === 409)) {
+            throw err;
+          }
+        }
+      }
+
+      await Promise.all([fetchAssets(), fetchLiabilities()]);
+      actionSuccessMessage = 'Starter institutional portfolio saved to database (3 assets, 1 debt facility).';
+    } catch (err: unknown) {
+      if (err instanceof ApiError && err.status === 403) {
+        actionErrorMessage = 'Forbidden: Analyst or Admin permissions for this treasury are required to save starter data.';
+      } else if (err instanceof ApiError) {
+        actionErrorMessage = err.message || 'Failed to save starter portfolio to database.';
+      } else if (err instanceof Error) {
+        actionErrorMessage = err.message;
+      } else {
+        actionErrorMessage = 'Failed to save starter portfolio to database.';
+      }
+    } finally {
+      isSavingStarter = false;
     }
   }
 
@@ -381,24 +438,24 @@
           method: 'POST',
           body: payload
         });
-        assets = [...assets, created];
+        await fetchAssets();
         actionSuccessMessage = `Asset "${created.name}" created and saved to portfolio universe.`;
       } else {
         const updated = await api<Asset>(`/api/v1/treasuries/${treasuryId}/assets/${encodeURIComponent(payload.id)}`, {
           method: 'PUT',
           body: payload
         });
-        assets = assets.map((a) => (a.id === updated.id ? updated : a));
+        await fetchAssets();
         actionSuccessMessage = `Asset "${updated.name}" updated successfully in database.`;
       }
 
       showAssetModal = false;
     } catch (err: unknown) {
       if (err instanceof ApiError) {
-        assetModalErrors = [err.message || 'Failed to persist asset to database.'];
-        if (err.details && err.details.length > 0) {
-          assetModalErrors = [...assetModalErrors, ...err.details];
-        }
+        const baseMsg = err.status === 403
+          ? 'Forbidden: Insufficient permissions to modify assets for this treasury.'
+          : err.message || 'Failed to persist asset to database.';
+        assetModalErrors = err.details && err.details.length > 0 ? [baseMsg, ...err.details] : [baseMsg];
       } else if (err instanceof Error) {
         assetModalErrors = [err.message];
       } else {
@@ -488,24 +545,24 @@
           method: 'POST',
           body: payload
         });
-        liabilities = [...liabilities, created];
+        await fetchLiabilities();
         actionSuccessMessage = `Liability "${created.name}" created and saved to portfolio.`;
       } else {
         const updated = await api<Liability>(`/api/v1/treasuries/${treasuryId}/liabilities/${encodeURIComponent(payload.id)}`, {
           method: 'PUT',
           body: payload
         });
-        liabilities = liabilities.map((l) => (l.id === updated.id ? updated : l));
+        await fetchLiabilities();
         actionSuccessMessage = `Liability "${updated.name}" updated successfully in database.`;
       }
 
       showLiabilityModal = false;
     } catch (err: unknown) {
       if (err instanceof ApiError) {
-        liabilityModalErrors = [err.message || 'Failed to persist liability to database.'];
-        if (err.details && err.details.length > 0) {
-          liabilityModalErrors = [...liabilityModalErrors, ...err.details];
-        }
+        const baseMsg = err.status === 403
+          ? 'Forbidden: Insufficient permissions to modify liabilities for this treasury.'
+          : err.message || 'Failed to persist liability to database.';
+        liabilityModalErrors = err.details && err.details.length > 0 ? [baseMsg, ...err.details] : [baseMsg];
       } else if (err instanceof Error) {
         liabilityModalErrors = [err.message];
       } else {
@@ -665,23 +722,18 @@
     isLoadingAssets = true;
     actionErrorMessage = null;
     actionSuccessMessage = null;
-    const sampleAssets: Asset[] = [
-      { id: 'gov_bond', name: 'Government Bonds', asset_type: 'gov_bond', cost: 0.001, expected_return: 0.07, risk: 0.05, liquidity: 0.95, volatility: 0.03 },
-      { id: 'bluechip_equity', name: 'Bluechip Equity Index', asset_type: 'equity', cost: 0.002, expected_return: 0.12, risk: 0.18, liquidity: 0.85, volatility: 0.15 },
-      { id: 'commercial_paper', name: 'Corporate Commercial Paper', asset_type: 'corp_bond', cost: 0.001, expected_return: 0.08, risk: 0.08, liquidity: 0.75, volatility: 0.06 }
-    ];
     try {
       const res = await api<TreasuryAssetsResponse>(`/api/v1/treasuries/${treasuryId}/assets`, {
         method: 'PUT',
-        body: sampleAssets
+        body: STARTER_ASSETS
       });
-      assets = res.data;
-      actionSuccessMessage = 'Sample institutional asset universe loaded and committed to database.';
+      assets = Array.isArray(res.data) ? res.data : [];
+      actionSuccessMessage = 'Starter institutional asset universe committed to database.';
     } catch (err: unknown) {
       if (err instanceof ApiError) {
-        actionErrorMessage = err.message || 'Failed to save sample assets.';
+        actionErrorMessage = err.message || 'Failed to save starter assets.';
       } else {
-        actionErrorMessage = 'Failed to load sample assets.';
+        actionErrorMessage = 'Failed to load starter assets.';
       }
     } finally {
       isLoadingAssets = false;
@@ -692,21 +744,18 @@
     isLoadingLiabilities = true;
     actionErrorMessage = null;
     actionSuccessMessage = null;
-    const sampleLiabilities: Liability[] = [
-      { id: 'senior_loan', name: 'Senior Revolving Facility', principal: 15.0, interest_rate: 0.065, maturity_months: 12, priority: 1, is_mandatory_reserve: true }
-    ];
     try {
       const res = await api<TreasuryLiabilitiesResponse>(`/api/v1/treasuries/${treasuryId}/liabilities`, {
         method: 'PUT',
-        body: sampleLiabilities
+        body: STARTER_LIABILITIES
       });
-      liabilities = res.data;
-      actionSuccessMessage = 'Sample liability facility loaded and committed to database.';
+      liabilities = Array.isArray(res.data) ? res.data : [];
+      actionSuccessMessage = 'Starter liability facility committed to database.';
     } catch (err: unknown) {
       if (err instanceof ApiError) {
-        actionErrorMessage = err.message || 'Failed to save sample liabilities.';
+        actionErrorMessage = err.message || 'Failed to save starter liabilities.';
       } else {
-        actionErrorMessage = 'Failed to load sample liabilities.';
+        actionErrorMessage = 'Failed to load starter liabilities.';
       }
     } finally {
       isLoadingLiabilities = false;
@@ -751,6 +800,19 @@
     liabilities = liabilities.filter((_, i) => i !== index);
   }
 
+  function validateOptionalStepSize(raw: string): string | null {
+    if (!raw.trim()) return null;
+    const step = parseFloat(raw);
+    if (isNaN(step) || step <= 0) {
+      return 'Optional step size must be a positive number if provided.';
+    }
+    if (treasury && treasury.total_capital / step > 200) {
+      const minStep = (treasury.total_capital / 200).toFixed(2);
+      return `Step size ${step} creates too many steps (total_capital / step_size > 200). Use at least ${minStep} or leave blank for auto (capital / 20).`;
+    }
+    return null;
+  }
+
   function validateGenerator(): boolean {
     const errs: string[] = [];
 
@@ -790,11 +852,9 @@
       errs.push('Minimum liquidity constraint floor must be between 0.00 and 1.00.');
     }
 
-    if (stepSize.trim()) {
-      const step = parseFloat(stepSize);
-      if (isNaN(step) || step <= 0) {
-        errs.push('Optional step size must be a positive number if provided.');
-      }
+    const stepErr = validateOptionalStepSize(stepSize);
+    if (stepErr) {
+      errs.push(stepErr);
     }
 
     fieldValidationErrors = errs;
@@ -861,12 +921,15 @@
     } catch (err: unknown) {
       if (err instanceof ApiError) {
         if (err.status === 502) {
-          generationError = 'AI engine abhi available nahi (AI Decision Engine is currently offline or unreachable).';
+          generationError = 'AI Decision Engine is currently offline or unreachable.';
+        } else if (err.status === 403) {
+          generationError = 'Forbidden: Access to orchestrate this treasury is restricted to authorized analysts and administrators.';
         } else {
           generationError = err.message || 'Strategy orchestration failed.';
         }
         if (err.details && err.details.length > 0) {
-          generationDetails = err.details;
+          const minStepHint = treasury ? ` Minimum recommended step_size: ${(treasury.total_capital / 200).toFixed(2)}.` : '';
+          generationDetails = err.details.map((d) => (d.includes('step_size') && minStepHint ? `${d}.${minStepHint}` : d));
         }
       } else if (err instanceof Error) {
         generationError = err.message;
@@ -1171,6 +1234,12 @@
       return;
     }
 
+    const councilStepErr = validateOptionalStepSize(councilStepSize);
+    if (councilStepErr) {
+      councilError = councilStepErr;
+      return;
+    }
+
     isEvaluatingCouncil = true;
 
     try {
@@ -1423,6 +1492,38 @@
       </div>
     {/if}
 
+    <!-- Empty Assets Onboarding Banner (Never spoofed as persisted) -->
+    {#if !isLoadingAssets && !assetsError && assets.length === 0}
+      <div class="alert alert-warning" style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
+        <div>
+          <strong>This treasury has no persisted assets yet.</strong>
+          <span style="display: block; font-size: 0.875rem; margin-top: 0.25rem;">
+            Add investment assets manually or persist a starter portfolio to PostgreSQL so allocations, risk models, and reporting read real database records.
+          </span>
+        </div>
+        {#if canWrite($user?.role)}
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button
+              type="button"
+              class="btn btn-primary btn-sm"
+              onclick={saveStarterPortfolioToDatabase}
+              disabled={isSavingStarter || isLoadingAssets || isLoadingLiabilities}
+            >
+              {isSavingStarter ? 'Saving Starter Portfolio...' : 'Save Starter Portfolio to Database'}
+            </button>
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              onclick={openAddAssetModal}
+              disabled={isSavingStarter}
+            >
+              + Add Asset
+            </button>
+          </div>
+        {/if}
+      </div>
+    {/if}
+
     <!-- Workspace Navigation Tabs -->
     <div class="tabs-nav">
       <button
@@ -1522,12 +1623,17 @@
               This corporate treasury currently has no configured investment assets in its allocation universe.
             </p>
             {#if canWrite($user?.role)}
-              <div style="margin-top: 1.25rem; display: flex; gap: 0.75rem; justify-content: center;">
+              <div style="margin-top: 1.25rem; display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
                 <button type="button" class="btn btn-primary" onclick={openAddAssetModal}>
                   + Add First Asset
                 </button>
-                <button type="button" class="btn btn-secondary" onclick={handleLoadAndPersistSampleAssets}>
-                  Load Baseline Institutional Universe
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  onclick={saveStarterPortfolioToDatabase}
+                  disabled={isSavingStarter}
+                >
+                  {isSavingStarter ? 'Saving Starter Portfolio...' : 'Save Starter Portfolio to Database'}
                 </button>
               </div>
             {/if}
@@ -1772,12 +1878,17 @@
                 id="stepSizeInput"
                 type="number"
                 step="any"
-                min="0.1"
+                min="0.01"
                 class="form-input"
-                placeholder="Leave blank for backend default (capital / 20)"
+                placeholder={treasury ? `Auto (capital / 20), min ${(treasury.total_capital / 200).toFixed(2)}` : 'Leave blank for backend default (capital / 20)'}
                 bind:value={stepSize}
                 disabled={isGenerating}
               />
+              {#if treasury}
+                <span style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.25rem; display: block;">
+                  Must keep steps &le; 200 (min step size: {(treasury.total_capital / 200).toFixed(2)}).
+                </span>
+              {/if}
             </div>
 
             <div class="form-group">
@@ -1817,10 +1928,10 @@
                 <button
                   type="button"
                   class="btn btn-secondary btn-xs"
-                  onclick={loadSampleAssets}
-                  disabled={isGenerating}
+                  onclick={saveStarterPortfolioToDatabase}
+                  disabled={isGenerating || isSavingStarter}
                 >
-                  Load Sample Assets
+                  {isSavingStarter ? 'Saving...' : 'Save Starter Portfolio to Database'}
                 </button>
                 <button
                   type="button"
@@ -1949,10 +2060,10 @@
                 <button
                   type="button"
                   class="btn btn-secondary btn-xs"
-                  onclick={loadSampleLiabilities}
-                  disabled={isGenerating}
+                  onclick={handleLoadAndPersistSampleLiabilities}
+                  disabled={isGenerating || isLoadingLiabilities}
                 >
-                  Load Sample Liabilities
+                  Reset to Sample Debt
                 </button>
                 <button
                   type="button"
@@ -2266,13 +2377,19 @@
         <!-- Optimization Engine Status -->
         <div class="optimization-status-box" style="margin-top: 1.75rem;">
           <h4 class="editor-title" style="font-size: 0.875rem;">Optimization Engine Status</h4>
-          {#if latestResult.optimization.status === 'not_available'}
+          {#if latestResult.optimization.status === 'unavailable' || latestResult.optimization.status === 'not_available'}
             <p class="state-message" style="margin-top: 0.25rem;">
-              Optimization Engine (Port 8001) is currently unavailable (Member 2 solver awaiting deployment).
+              Optimization Engine (Port 8001) is currently unavailable: {latestResult.optimization.reason}
             </p>
           {:else}
             <p style="margin-top: 0.25rem; font-size: 0.875rem;">
-              Status: <strong>{latestResult.optimization.status}</strong> - {latestResult.optimization.reason}
+              Status: <strong>{latestResult.optimization.status}</strong> &mdash; {latestResult.optimization.reason}
+              {#if latestResult.optimization.best_classical_method}
+                | Best Classical: <strong>{latestResult.optimization.best_classical_method}</strong>
+              {/if}
+              {#if latestResult.optimization.qaoa_approximation_ratio != null}
+                | QAOA Approx Ratio: <strong>{(latestResult.optimization.qaoa_approximation_ratio * 100).toFixed(1)}%</strong>
+              {/if}
             </p>
           {/if}
         </div>
@@ -2281,11 +2398,20 @@
 
     <!-- Historical Saved Strategies Section -->
     <div class="strategies-section">
-      <div class="section-header">
+      <div class="section-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
         <div>
           <h2 class="section-title">Saved Execution Strategies</h2>
           <p class="section-subtitle">Historical audit trail of quantitative algorithm outputs and capital allocations</p>
         </div>
+        {#if canWrite($user?.role)}
+          <button
+            type="button"
+            class="btn btn-primary btn-sm"
+            onclick={() => (showGenerator = !showGenerator)}
+          >
+            {showGenerator ? 'Close Strategy Generator' : '+ Generate Strategy'}
+          </button>
+        {/if}
       </div>
 
       {#if strategiesError}

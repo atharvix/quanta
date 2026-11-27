@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
+  import { user } from '$lib/auth';
+  import { isAdmin } from '$lib/roles';
   import type { Treasury, TreasuriesListResponse, AuditLogRecord, AuditLogsListResponse } from '$lib/types';
   import { formatDate } from '$lib/format';
   import {
@@ -81,13 +83,12 @@
     isLoading = true;
     exportError = null;
     try {
-      const [tList, aList] = await Promise.all([
-        fetchAllTreasuries(),
-        fetchAllAuditLogs()
-      ]);
-
-      treasuries = tList;
-      auditLogs = aList;
+      treasuries = await fetchAllTreasuries();
+      if (isAdmin($user?.role)) {
+        auditLogs = await fetchAllAuditLogs();
+      } else {
+        auditLogs = [];
+      }
     } catch (err: any) {
       exportError = `Failed to load reporting data: ${err?.message || 'Network error'}`;
     } finally {
@@ -322,43 +323,56 @@
       </p>
       <div class="report-meta">
         <span>Format: JSON Document or CSV</span>
-        <span>Scope: {auditLogs.length} Sealed Audit Records (100% Exported)</span>
+        <span>
+          {#if isAdmin($user?.role)}
+            Scope: {auditLogs.length} Sealed Audit Records (100% Exported)
+          {:else}
+            Scope: Admin privileges required
+          {/if}
+        </span>
       </div>
-      <div class="export-btn-group">
-        <button
-          type="button"
-          class="btn-export"
-          onclick={exportAuditLogsJSON}
-          disabled={isLoading || isExporting}
-        >
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75">
-            <path d="M2 10v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3" />
-            <path d="M8 2v8m-3-3l3 3 3-3" />
-          </svg>
-          <span>Export JSON</span>
-        </button>
-        <button
-          type="button"
-          class="btn-export btn-export-secondary"
-          onclick={exportAuditLogsCSV}
-          disabled={isLoading || isExporting}
-        >
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75">
-            <path d="M2 10v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3" />
-            <path d="M8 2v8m-3-3l3 3 3-3" />
-          </svg>
-          <span>Export CSV</span>
-        </button>
-      </div>
+      {#if !isAdmin($user?.role)}
+        <p class="empty-state" style="padding: 0.75rem 0; text-align: left;">
+          Audit trail exports are restricted to Admin users. Balance Sheet CSV &amp; JSON exports above remain fully available.
+        </p>
+      {:else}
+        <div class="export-btn-group">
+          <button
+            type="button"
+            class="btn-export"
+            onclick={exportAuditLogsJSON}
+            disabled={isLoading || isExporting}
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75">
+              <path d="M2 10v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3" />
+              <path d="M8 2v8m-3-3l3 3 3-3" />
+            </svg>
+            <span>Export JSON</span>
+          </button>
+          <button
+            type="button"
+            class="btn-export btn-export-secondary"
+            onclick={exportAuditLogsCSV}
+            disabled={isLoading || isExporting}
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75">
+              <path d="M2 10v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3" />
+              <path d="M8 2v8m-3-3l3 3 3-3" />
+            </svg>
+            <span>Export CSV</span>
+          </button>
+        </div>
+      {/if}
     </div>
   </div>
 
   <!-- Recent Report Runs & Audit Entries Preview -->
-  <div class="preview-card">
-    <div class="card-header-row">
-      <h3 class="preview-heading">Recent Audit Log Records Preview</h3>
-      <span class="preview-count">{auditLogs.length} Total Records Loaded</span>
-    </div>
+  {#if isAdmin($user?.role)}
+    <div class="preview-card">
+      <div class="card-header-row">
+        <h3 class="preview-heading">Recent Audit Log Records Preview</h3>
+        <span class="preview-count">{auditLogs.length} Total Records Loaded</span>
+      </div>
 
     {#if isLoading}
       <div class="loading-state">
@@ -394,6 +408,7 @@
       </div>
     {/if}
   </div>
+{/if}
 </div>
 
 <style>

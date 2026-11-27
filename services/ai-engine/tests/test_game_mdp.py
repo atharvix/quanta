@@ -177,3 +177,26 @@ def test_evaluate_payoff_uses_asset_type_not_literal_key():
     assert bond_payoff == pytest.approx(base_payoff - 0.035, abs=1e-6)
     assert comb_payoff == pytest.approx(base_payoff - 0.185 - 0.20 * 0.15, abs=1e-6)
     assert comb_payoff < 0.0
+
+    # Negative liquidity_freeze (as defined in MARKET_SHOCK_ACTIONS) must also reduce payoff, not add liquidity
+    neg_liq_shock = MarketShockAction(
+        shock_name="Negative Liquidity Squeeze",
+        equity_drawdown=0.0,
+        credit_spread_spike=0.0,
+        liquidity_freeze=-0.25,
+    )
+    neg_liq_payoff = TreasuryGameState(stressed_state, assets_map, is_max_turn=False, active_shock=neg_liq_shock).evaluate_payoff(0.50)
+    assert neg_liq_payoff == pytest.approx(base_payoff - 0.20 * 0.25, abs=1e-6)
+
+
+def test_alpha_beta_computes_actual_worst_shock():
+    """Verify worst_market_shock picks the genuine damaging shock, never Status Quo."""
+    assets = [
+        Asset(id="gov_bond", name="Gov", asset_type=AssetType.GOV_BOND, expected_return=0.07, risk=0.05, liquidity=0.95),
+        Asset(id="equity", name="Equity", asset_type=AssetType.EQUITY, expected_return=0.14, risk=0.40, liquidity=0.80),
+    ]
+    prob = FinancialProblem(capital=20.0, step_size=10.0, assets=assets, liabilities=[], constraints=[])
+    solver = AlphaBetaPruningSolver()
+    res = solver.stress_test(FinancialAllocationProblem(prob))
+    assert res.worst_market_shock in {s.shock_name for s in MARKET_SHOCK_ACTIONS}
+    assert res.worst_market_shock != "Status Quo"

@@ -1,12 +1,20 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { api } from '$lib/api';
-  import type { Treasury, TreasuriesListResponse, AIRiskAnalyzeResponse, Asset, Liability } from '$lib/types';
+  import { api, ApiError } from '$lib/api';
+  import type {
+    Treasury,
+    TreasuriesListResponse,
+    AIRiskAnalyzeResponse,
+    Asset,
+    Liability,
+    StrategiesListResponse
+  } from '$lib/types';
   import { formatPercent } from '$lib/format';
   import {
     formatRiskScore,
     formatPosteriorProb,
-    calculateStressedFloor
+    calculateStressedFloor,
+    extractAllocations
   } from '$lib/risk';
 
   let treasuries = $state<Treasury[]>([]);
@@ -14,6 +22,7 @@
   let isLoading = $state(true);
   let isAnalyzing = $state(false);
   let errorMessage = $state<string | null>(null);
+  let errorKind = $state<'auth' | 'engine' | 'validation' | 'network' | null>(null);
   let hasNoAssets = $state(false);
   let riskData = $state<AIRiskAnalyzeResponse | null>(null);
 
@@ -53,6 +62,7 @@
   async function loadData() {
     isLoading = true;
     errorMessage = null;
+    errorKind = null;
     try {
       const res = await api<TreasuriesListResponse>('/api/v1/treasuries?limit=100');
       treasuries = Array.isArray(res.data) ? res.data : [];
@@ -63,6 +73,13 @@
     } catch (err) {
       treasuries = [];
       errorMessage = err instanceof Error ? err.message : 'Failed to load treasuries';
+      if (err instanceof ApiError && err.status === 403) {
+        errorKind = 'auth';
+        errorMessage = 'Access denied: Insufficient permissions to view corporate treasuries.';
+      } else {
+        errorKind = 'network';
+        errorMessage = err instanceof Error ? err.message : 'Failed to load treasuries';
+      }
     } finally {
       isLoading = false;
     }
@@ -73,6 +90,7 @@
 
     isAnalyzing = true;
     errorMessage = null;
+    errorKind = null;
     hasNoAssets = false;
 
     try {
@@ -87,15 +105,29 @@
         return;
       }
 
-      // 2. Fetch current liabilities (optional for baseline solvency)
-      let liabilities: Liability[] = [];
-      try {
-        const liabRes = await api<{ data: Liability[] }>(`/api/v1/treasuries/${selectedTreasuryId}/liabilities`);
-        if (Array.isArray(liabRes.data)) {
-          liabilities = liabRes.data;
+      // 2. Fetch current liabilities and latest saved strategy allocations in parallel
+      const [liabRes, stratRes] = await Promise.allSettled([
+        api<{ data: Liability[] }>(`/api/v1/treasuries/${selectedTreasuryId}/liabilities`),
+        api<StrategiesListResponse>(`/api/v1/treasuries/${selectedTreasuryId}/strategies?limit=1`)
+      ]);
+
+      const liabilities: Liability[] =
+        liabRes.status === 'fulfilled' && Array.isArray(liabRes.value?.data)
+          ? liabRes.value.data
+          : [];
+
+      let allocations: Record<string, number> | undefined;
+      if (stratRes.status === 'fulfilled' && Array.isArray(stratRes.value?.data) && stratRes.value.data[0]?.allocations_json) {
+        const extracted = extractAllocations(stratRes.value.data[0].allocations_json, assets);
+        const mandatoryReserve = liabilities.reduce(
+          (sum, l) => (l.is_mandatory_reserve ? sum + (Number(l.principal) || 0) : sum),
+          0
+        );
+        const allocSum = Object.values(extracted).reduce((s, v) => s + v, 0);
+        const totalCap = Number(selectedTreasury?.total_capital) || 0;
+        if (allocSum > 0 && allocSum + mandatoryReserve <= totalCap + 1e-4) {
+          allocations = extracted;
         }
-      } catch {
-        liabilities = [];
       }
 
       // 3. Dispatch to Go backend and Python AI Engine Bayesian inference
@@ -104,6 +136,7 @@
         body: {
           assets,
           liabilities,
+          ...(allocations ? { allocations } : {}),
           evidence: {
             inflation_high: inflationHigh,
             rate_hike: rateHike,
@@ -117,6 +150,24 @@
     } catch (err) {
       riskData = null;
       errorMessage = err instanceof Error ? err.message : 'AI Decision Engine is offline or unreachable';
+      if (err instanceof ApiError) {
+        if (err.status === 403) {
+          errorKind = 'auth';
+          errorMessage = 'Access denied: You do not have permission to analyze or view this treasury.';
+        } else if (err.status === 502 || err.status === 503) {
+          errorKind = 'engine';
+          errorMessage = err.message || 'AI Decision Engine is offline or unreachable.';
+        } else if (err.status === 400 || err.status === 422) {
+          errorKind = 'validation';
+          errorMessage = err.details.length > 0 ? err.details.join(', ') : err.message;
+        } else {
+          errorKind = 'network';
+          errorMessage = err.message || 'Risk analysis request failed.';
+        }
+      } else {
+        errorKind = 'network';
+        errorMessage = err instanceof Error ? err.message : 'Unable to reach backend gateway.';
+      }
     } finally {
       isAnalyzing = false;
     }
@@ -184,7 +235,15 @@
         {#if isAnalyzing}
           <span class="status-pill status-loading">Calculating Bayesian Posterior...</span>
         {:else if errorMessage}
-          <span class="status-pill status-danger">AI Engine Offline (Inference Unavailable)</span>
+          <span class="status-pill status-danger">
+            {errorKind === 'auth'
+              ? 'Permission Denied (403)'
+              : errorKind === 'validation'
+                ? 'Invalid Request Input'
+                : errorKind === 'engine'
+                  ? 'AI Engine Offline (Inference Unavailable)'
+                  : 'Request Error'}
+          </span>
         {:else if hasNoAssets}
           <span class="status-pill status-warning">No Assets Configured</span>
         {:else if riskData}
@@ -204,11 +263,20 @@
   </div>
 
   <!-- Diagnostic Alert when Engine is Offline or Assets Missing -->
+  <!-- Diagnostic Alert when Engine is Offline, Access Denied, or Assets Missing -->
   {#if errorMessage}
     <div class="alert-box alert-danger">
       <div class="alert-content">
-        <span class="alert-title">AI Decision Engine Unavailable:</span>
-        <span class="alert-desc">{errorMessage}. Quantitative risk scores and Bayesian conditional probabilities are marked as Unavailable. Financial indicators are strictly verified and never fabricated.</span>
+        <span class="alert-title">
+          {errorKind === 'auth'
+            ? 'Permission Denied on Selected Treasury:'
+            : errorKind === 'validation'
+              ? 'Risk Analysis Input Validation Error:'
+              : errorKind === 'engine'
+                ? 'AI Decision Engine Unavailable:'
+                : 'Risk Analysis Error:'}
+        </span>
+        <span class="alert-desc">{errorMessage}</span>
       </div>
     </div>
   {:else if hasNoAssets}
@@ -387,6 +455,50 @@
       <span class="m-desc">Expected tail loss beyond 95th percentile</span>
     </div>
   </div>
+
+  <!-- 6 Macroeconomic Regime Stress Evaluations -->
+  {#if riskData?.scenario_summary && riskData.scenario_summary.length > 0}
+    <div class="macro-controls-card">
+      <div class="card-top-row">
+        <h2 class="card-heading">Macroeconomic Regime Stress Scenarios</h2>
+        <span class="pill-kicker">{riskData.scenario_summary.length} Market Regimes Evaluated</span>
+      </div>
+      <p class="card-subheading">Projected portfolio return, risk, liquidity, solvency, and compliance across stressed macroeconomic regimes.</p>
+
+      <div class="scenarios-grid">
+        {#each riskData.scenario_summary as sc}
+          <div class="scenario-card" class:scenario-breach={!sc.is_solvent || !sc.is_liquid}>
+            <div class="scenario-top">
+              <span class="scenario-name">{sc.regime.replaceAll('_', ' ').toUpperCase()}</span>
+              <div class="scenario-badges">
+                <span class="status-pill {sc.is_solvent ? 'status-success' : 'status-danger'}">
+                  {sc.is_solvent ? 'Solvent' : 'Insolvent'}
+                </span>
+                <span class="status-pill {sc.is_liquid ? 'status-success' : 'status-warning'}">
+                  {sc.is_liquid ? 'Liquid' : 'Illiquid'}
+                </span>
+              </div>
+            </div>
+            <div class="scenario-stats">
+              <div>
+                <span class="m-label">Proj. Return</span>
+                <div class="font-mono font-bold">{formatPercent(sc.projected_return)}</div>
+              </div>
+              <div>
+                <span class="m-label">Stressed Risk</span>
+                <div class="font-mono font-bold">{formatRiskScore(sc.stressed_risk)}</div>
+              </div>
+              <div>
+                <span class="m-label">Stressed Liq.</span>
+                <div class="font-mono font-bold">{formatPercent(sc.stressed_liquidity)}</div>
+              </div>
+            </div>
+            <p class="alert-desc">{sc.explanation}</p>
+          </div>
+        {/each}
+      </div>
+    </div>
+  {/if}
 
   <!-- Portfolio Risk Bounding Table -->
   <div class="portfolios-risk-card">
@@ -931,6 +1043,63 @@
   }
 
   .text-warning { color: var(--color-warning); }
+
+  .scenarios-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+  }
+
+  .scenario-card {
+    background-color: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .scenario-card.scenario-breach {
+    border-color: rgba(239, 68, 68, 0.45);
+  }
+
+  .scenario-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .scenario-name {
+    font-size: 0.8125rem;
+    font-weight: 800;
+    color: var(--color-text);
+  }
+
+  .scenario-badges {
+    display: flex;
+    gap: 0.35rem;
+  }
+
+  .scenario-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+  }
+
+  @media (max-width: 1024px) {
+    .scenarios-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (max-width: 640px) {
+    .scenarios-grid {
+      grid-template-columns: 1fr;
+    }
+  }
   .text-muted { color: var(--color-text-muted); }
   .font-mono { font-family: var(--font-mono, monospace); }
   .font-bold { font-weight: 700; }

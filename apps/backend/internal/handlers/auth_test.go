@@ -117,7 +117,7 @@ func setupTestAuthRouter() (*chi.Mux, *service.AuthService) {
 func TestAuthHandler_Register(t *testing.T) {
 	r, _ := setupTestAuthRouter()
 
-	t.Run("Success 201 Created", func(t *testing.T) {
+	t.Run("Success 201 Created returns token and user", func(t *testing.T) {
 		payload := `{"email":"admin@quanta.local","password":"securepassword123","full_name":"Admin User"}`
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBufferString(payload))
 		rec := httptest.NewRecorder()
@@ -129,14 +129,45 @@ func TestAuthHandler_Register(t *testing.T) {
 
 		var resp map[string]any
 		_ = json.Unmarshal(rec.Body.Bytes(), &resp)
-		if resp["email"] != "admin@quanta.local" {
-			t.Errorf("expected email admin@quanta.local, got %v", resp["email"])
+		if tok, ok := resp["token"].(string); !ok || tok == "" {
+			t.Errorf("expected non-empty token in register response, got %v", resp["token"])
 		}
-		if resp["role"] != "admin" {
-			t.Errorf("expected role admin for first user, got %v", resp["role"])
+		if resp["expires_at"] == nil {
+			t.Errorf("expected expires_at in register response")
 		}
-		if _, hasHash := resp["password_hash"]; hasHash {
+		userObj, ok := resp["user"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected user object in register response, got %T (%v)", resp["user"], resp["user"])
+		}
+		if userObj["email"] != "admin@quanta.local" {
+			t.Errorf("expected email admin@quanta.local, got %v", userObj["email"])
+		}
+		if userObj["role"] != "admin" {
+			t.Errorf("expected role admin for first user, got %v", userObj["role"])
+		}
+		if _, hasHash := userObj["password_hash"]; hasHash {
 			t.Errorf("password_hash should never be returned in register response")
+		}
+	})
+
+	t.Run("Second user receives analyst role on register", func(t *testing.T) {
+		payload := `{"email":"analyst@quanta.local","password":"securepassword123","full_name":"Analyst User"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBufferString(payload))
+		rec := httptest.NewRecorder()
+
+		r.ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("expected 201 Created, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+
+		var resp map[string]any
+		_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+		userObj, ok := resp["user"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected user object in register response, got %T", resp["user"])
+		}
+		if userObj["role"] != "analyst" {
+			t.Errorf("expected default role analyst for second user, got %v", userObj["role"])
 		}
 	})
 
@@ -246,7 +277,7 @@ func TestAuthHandler_Me(t *testing.T) {
 
 	t.Run("Authenticated context returns 200 with profile", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
-		authCtx := domain.WithUserContext(req.Context(), regUser.ID, regUser.Email, regUser.Role)
+		authCtx := domain.WithUserContext(req.Context(), regUser.User.ID, regUser.User.Email, regUser.User.Role)
 		req = req.WithContext(authCtx)
 		rec := httptest.NewRecorder()
 
@@ -312,7 +343,7 @@ func TestAuthHandler_UpdateRole(t *testing.T) {
 
 	t.Run("Invalid role returns 400 Bad Request", func(t *testing.T) {
 		payload := `{"role":"invalid_role_name"}`
-		req := httptest.NewRequest(http.MethodPatch, "/api/v1/users/"+viewer.ID+"/role", bytes.NewBufferString(payload))
+		req := httptest.NewRequest(http.MethodPatch, "/api/v1/users/"+viewer.User.ID+"/role", bytes.NewBufferString(payload))
 		rec := httptest.NewRecorder()
 
 		r.ServeHTTP(rec, req)
@@ -334,7 +365,7 @@ func TestAuthHandler_UpdateRole(t *testing.T) {
 
 	t.Run("Cannot demote sole admin returns 400", func(t *testing.T) {
 		payload := `{"role":"viewer"}`
-		req := httptest.NewRequest(http.MethodPatch, "/api/v1/users/"+admin.ID+"/role", bytes.NewBufferString(payload))
+		req := httptest.NewRequest(http.MethodPatch, "/api/v1/users/"+admin.User.ID+"/role", bytes.NewBufferString(payload))
 		rec := httptest.NewRecorder()
 
 		r.ServeHTTP(rec, req)
@@ -345,7 +376,7 @@ func TestAuthHandler_UpdateRole(t *testing.T) {
 
 	t.Run("Successful role update returns 200 OK", func(t *testing.T) {
 		payload := `{"role":"analyst"}`
-		req := httptest.NewRequest(http.MethodPatch, "/api/v1/users/"+viewer.ID+"/role", bytes.NewBufferString(payload))
+		req := httptest.NewRequest(http.MethodPatch, "/api/v1/users/"+viewer.User.ID+"/role", bytes.NewBufferString(payload))
 		rec := httptest.NewRecorder()
 
 		r.ServeHTTP(rec, req)

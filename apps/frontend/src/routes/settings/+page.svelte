@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { browser } from '$app/env';
-  import { user } from '$lib/auth';
-  import { theme } from '$lib/theme';
+  import { onMount } from "svelte";
+  import { browser } from "$app/env";
+  import { user } from "$lib/auth";
+  import { theme } from "$lib/theme";
 
-  let selectedCurrency = $state('USD');
-  let pollingInterval = $state('30');
+  let selectedCurrency = $state("USD");
+  let pollingInterval = $state("30");
   let liquidityAlert = $state(true);
   let healthAlert = $state(true);
   let auditAlert = $state(true);
@@ -13,22 +13,29 @@
 
   onMount(() => {
     if (browser) {
-      selectedCurrency = localStorage.getItem('quanta_currency') || 'USD';
-      pollingInterval = localStorage.getItem('quanta_polling_interval') || '30';
-      liquidityAlert = localStorage.getItem('quanta_alert_liquidity') !== 'false';
-      healthAlert = localStorage.getItem('quanta_alert_health') !== 'false';
-      auditAlert = localStorage.getItem('quanta_alert_audit') !== 'false';
+      selectedCurrency = localStorage.getItem("quanta_currency") || "USD";
+      pollingInterval = localStorage.getItem("quanta_polling_interval") || "30";
+      liquidityAlert =
+        localStorage.getItem("quanta_alert_liquidity") !== "false";
+      healthAlert = localStorage.getItem("quanta_alert_health") !== "false";
+      auditAlert = localStorage.getItem("quanta_alert_audit") !== "false";
     }
   });
 
   function handleSave(e: SubmitEvent) {
     e.preventDefault();
     if (browser) {
-      localStorage.setItem('quanta_currency', selectedCurrency);
-      localStorage.setItem('quanta_polling_interval', pollingInterval);
-      localStorage.setItem('quanta_alert_liquidity', liquidityAlert ? 'true' : 'false');
-      localStorage.setItem('quanta_alert_health', healthAlert ? 'true' : 'false');
-      localStorage.setItem('quanta_alert_audit', auditAlert ? 'true' : 'false');
+      localStorage.setItem("quanta_currency", selectedCurrency);
+      localStorage.setItem("quanta_polling_interval", pollingInterval);
+      localStorage.setItem(
+        "quanta_alert_liquidity",
+        liquidityAlert ? "true" : "false",
+      );
+      localStorage.setItem(
+        "quanta_alert_health",
+        healthAlert ? "true" : "false",
+      );
+      localStorage.setItem("quanta_alert_audit", auditAlert ? "true" : "false");
     }
     saveSuccess = true;
     setTimeout(() => {
@@ -49,7 +56,10 @@
         <span class="eyebrow-text">SYSTEM PREFERENCES &amp; CONFIGURATION</span>
       </div>
       <h1 class="page-title">Platform Settings</h1>
-      <p class="page-subtitle">Manage operator workspace configurations, telemetry intervals, and security preferences.</p>
+      <p class="page-subtitle">
+        Manage operator workspace configurations, telemetry intervals, and
+        security preferences.
+      </p>
     </div>
   </div>
 
@@ -63,13 +73,18 @@
     <!-- Section 1: Operator Identity & RBAC Profile -->
     <div class="settings-card">
       <h2 class="card-heading">Operator Profile</h2>
-      <p class="card-subheading">Active institutional session credentials and assigned access control role.</p>
+      <p class="card-subheading">
+        Active institutional session credentials and assigned access control
+        role.
+      </p>
 
       {#if $user}
         <div class="profile-details-grid">
           <div class="detail-item">
             <span class="detail-label">Full Name</span>
-            <span class="detail-val">{$user.full_name || 'System Operator'}</span>
+            <span class="detail-val"
+              >{$user.full_name || "System Operator"}</span
+            >
           </div>
           <div class="detail-item">
             <span class="detail-label">Email Address</span>
@@ -77,7 +92,11 @@
           </div>
           <div class="detail-item">
             <span class="detail-label">Role Classification</span>
-            <div><span class="badge badge-{$user.role}">{$user.role.toUpperCase()}</span></div>
+            <div>
+              <span class="badge badge-{$user.role}"
+                >{$user.role.toUpperCase()}</span
+              >
+            </div>
           </div>
           <div class="detail-item">
             <span class="detail-label">Access Model</span>
@@ -90,43 +109,69 @@
     <!-- Section 2: Financial & Telemetry Preferences -->
     <div class="settings-card">
       <h2 class="card-heading">Financial &amp; Telemetry Defaults</h2>
-      <p class="card-subheading">Customize default reporting currency and live microservice polling frequency.</p>
+      <p class="card-subheading">
+        Customize default reporting currency and live microservice polling
+        frequency.
+      </p>
 
       <div class="fields-grid">
         <div class="form-group">
-          <label for="currency-select" class="form-label">Base Reporting Currency</label>
-          <select id="currency-select" class="form-select" bind:value={selectedCurrency}>
+          <label for="currency-select" class="form-label"
+            >Base Reporting Currency</label
+          >
+          <select
+            id="currency-select"
+            class="form-select"
+            bind:value={selectedCurrency}
+          >
             <option value="USD">USD ($) - United States Dollar</option>
             <option value="EUR">EUR (€) - Eurozone</option>
             <option value="GBP">GBP (£) - British Pound</option>
             <option value="INR">INR (₹) - Indian Rupee</option>
           </select>
-          <span class="form-hint">Applied across consolidated balance sheet summaries.</span>
+          <span class="form-hint"
+            >Applied across consolidated balance sheet summaries.</span
+          >
         </div>
 
         <div class="form-group">
-          <label for="polling-select" class="form-label">Diagnostic Telemetry Cycle</label>
-          <select id="polling-select" class="form-select" bind:value={pollingInterval}>
+          <label for="polling-select" class="form-label"
+            >Diagnostic Telemetry Cycle</label
+          >
+          <select
+            id="polling-select"
+            class="form-select"
+            bind:value={pollingInterval}
+          >
             <option value="15">15 Seconds (High Frequency)</option>
             <option value="30">30 Seconds (Default Balanced)</option>
             <option value="60">60 Seconds (Low Network Footprint)</option>
           </select>
-          <span class="form-hint">Determines automated cluster health heartbeat polling.</span>
+          <span class="form-hint"
+            >Determines automated cluster health heartbeat polling.</span
+          >
         </div>
 
         <div class="form-group">
-          <label for="theme-select" class="form-label">Workspace Appearance</label>
+          <label for="theme-select" class="form-label"
+            >Workspace Appearance</label
+          >
           <select
             id="theme-select"
             class="form-select"
             value={$theme}
-            onchange={(e) => theme.setTheme((e.target as HTMLSelectElement).value as any)}
+            onchange={(e) =>
+              theme.setTheme((e.target as HTMLSelectElement).value as any)}
           >
             <option value="light">Executive Light (Crisp Enterprise)</option>
-            <option value="dark">Command Center Dark (Obsidian &amp; Gold)</option>
+            <option value="dark"
+              >Command Center Dark (Obsidian &amp; Gold)</option
+            >
             <option value="system">System Match (Auto OS Sync)</option>
           </select>
-          <span class="form-hint">Dual-theme high-contrast financial palette.</span>
+          <span class="form-hint"
+            >Dual-theme high-contrast financial palette.</span
+          >
         </div>
       </div>
     </div>
@@ -134,30 +179,56 @@
     <!-- Section 3: Notification Alerts -->
     <div class="settings-card">
       <h2 class="card-heading">System &amp; Risk Alert Channels</h2>
-      <p class="card-subheading">Configure in-app notification indicators for critical treasury thresholds.</p>
+      <p class="card-subheading">
+        Configure in-app notification indicators for critical treasury
+        thresholds.
+      </p>
 
       <div class="toggle-list">
         <label class="toggle-item">
-          <input type="checkbox" bind:checked={liquidityAlert} class="toggle-checkbox" />
+          <input
+            type="checkbox"
+            bind:checked={liquidityAlert}
+            class="toggle-checkbox"
+          />
           <div class="toggle-meta">
             <span class="toggle-title">Liquidity Floor Warning</span>
-            <span class="toggle-desc">Trigger notification when any portfolio drops below its mandatory liquidity ratio.</span>
+            <span class="toggle-desc"
+              >Trigger notification when any portfolio drops below its mandatory
+              liquidity ratio.</span
+            >
           </div>
         </label>
 
         <label class="toggle-item">
-          <input type="checkbox" bind:checked={healthAlert} class="toggle-checkbox" />
+          <input
+            type="checkbox"
+            bind:checked={healthAlert}
+            class="toggle-checkbox"
+          />
           <div class="toggle-meta">
             <span class="toggle-title">Microservice Degradation Warning</span>
-            <span class="toggle-desc">Alert when Go Gateway, Postgres, or AI Engine reports non-operational state.</span>
+            <span class="toggle-desc"
+              >Alert when Go Gateway, Postgres, or AI Engine reports
+              non-operational state.</span
+            >
           </div>
         </label>
 
         <label class="toggle-item">
-          <input type="checkbox" bind:checked={auditAlert} class="toggle-checkbox" />
+          <input
+            type="checkbox"
+            bind:checked={auditAlert}
+            class="toggle-checkbox"
+          />
           <div class="toggle-meta">
-            <span class="toggle-title">Administrative Audit Trail Notifications</span>
-            <span class="toggle-desc">Log notifications when sensitive role modifications or asset allocations occur.</span>
+            <span class="toggle-title"
+              >Administrative Audit Trail Notifications</span
+            >
+            <span class="toggle-desc"
+              >Log notifications when sensitive role modifications or asset
+              allocations occur.</span
+            >
           </div>
         </label>
       </div>

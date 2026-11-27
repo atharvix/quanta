@@ -778,7 +778,7 @@ func TestRiskService_TreasuryAuthorization(t *testing.T) {
 		}
 	})
 
-	t.Run("Analyst cannot access unassigned/legacy treasury (OwnerID == nil)", func(t *testing.T) {
+	t.Run("Analyst can access unassigned/legacy treasury (OwnerID == nil)", func(t *testing.T) {
 		unassignedTreasury := &domain.Treasury{
 			ID:                validTreasuryID,
 			Name:              "Unassigned Legacy Treasury",
@@ -800,14 +800,26 @@ func TestRiskService_TreasuryAuthorization(t *testing.T) {
 
 		analystCtx := domain.WithUserContext(ctx, "any-analyst", "analyst@quanta.local", domain.RoleAnalyst)
 
-		_, err := uSvc.AnalyzeRisk(analystCtx, validTreasuryID, riskInput)
-		if !errors.Is(err, domain.ErrForbidden) {
-			t.Fatalf("expected ErrForbidden for Analyst on unassigned treasury in AnalyzeRisk, got: %v", err)
+		resp, err := uSvc.AnalyzeRisk(analystCtx, validTreasuryID, riskInput)
+		if err != nil {
+			t.Fatalf("expected Analyst to access unassigned treasury in AnalyzeRisk, got: %v", err)
+		}
+		if resp == nil {
+			t.Fatal("expected non-nil response")
 		}
 
-		_, err = uSvc.AdversarialStressTest(analystCtx, validTreasuryID, stressInput)
+		stressResp, err := uSvc.AdversarialStressTest(analystCtx, validTreasuryID, stressInput)
+		if err != nil {
+			t.Fatalf("expected Analyst to access unassigned treasury in AdversarialStressTest, got: %v", err)
+		}
+		if stressResp == nil {
+			t.Fatal("expected non-nil response")
+		}
+
+		viewerCtx := domain.WithUserContext(ctx, "any-viewer", "viewer@quanta.local", domain.RoleViewer)
+		_, err = uSvc.AnalyzeRisk(viewerCtx, validTreasuryID, riskInput)
 		if !errors.Is(err, domain.ErrForbidden) {
-			t.Fatalf("expected ErrForbidden for Analyst on unassigned treasury in AdversarialStressTest, got: %v", err)
+			t.Fatalf("expected ErrForbidden for Viewer on unassigned treasury in AnalyzeRisk, got: %v", err)
 		}
 	})
 

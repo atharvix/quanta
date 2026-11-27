@@ -581,6 +581,7 @@ func TestF5_RBAC_And_TenantIsolation_Integration(t *testing.T) {
 		})
 
 		t.Run(fmt.Sprintf("%s - Analyst accessing unassigned/legacy treasury returns 403 Forbidden", ep.name), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s - Analyst accessing unassigned/legacy treasury returns 200 OK", ep.name), func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/treasuries/%s%s", treasuryBeta.ID, ep.path), bytes.NewReader(payloadBytes))
 			req.Header.Set("Authorization", "Bearer "+tokenAnalystA)
 			req.Header.Set("Content-Type", "application/json")
@@ -589,6 +590,8 @@ func TestF5_RBAC_And_TenantIsolation_Integration(t *testing.T) {
 
 			if rec.Code != http.StatusForbidden {
 				t.Errorf("expected 403 Forbidden for Analyst on unassigned treasury, got %d: %s", rec.Code, rec.Body.String())
+			if rec.Code != http.StatusOK {
+				t.Errorf("expected 200 OK for Analyst on unassigned treasury, got %d: %s", rec.Code, rec.Body.String())
 			}
 		})
 

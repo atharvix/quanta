@@ -72,7 +72,7 @@ class TreasuryGameState:
             ) / max(1.0, st.total_capital)
             
             stressed_return = base_return - shock_return_loss
-            stressed_liq = max(0.0, base_liq - self.active_shock.liquidity_freeze)
+            stressed_liq = max(0.0, base_liq - abs(self.active_shock.liquidity_freeze))
             stressed_risk = min(1.0, base_risk * 1.4)
             
             payoff = stressed_return - (1.0 - risk_tolerance) * 1.5 * (stressed_risk ** 2) + 0.20 * stressed_liq

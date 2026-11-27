@@ -324,10 +324,21 @@ export interface MonteCarloSimulationReport {
   probability_of_loss: number;
 }
 
+export interface ScenarioResult {
+  regime: string;
+  projected_return: number;
+  stressed_risk: number;
+  stressed_liquidity: number;
+  is_solvent: boolean;
+  is_liquid: boolean;
+  explanation: string;
+}
+
 export interface AIRiskAnalyzeResponse {
   risk_breakdown: RiskFactorBreakdown;
   bayesian_inference: BayesianRiskInferenceResult;
   monte_carlo_report?: MonteCarloSimulationReport;
+  scenario_summary?: ScenarioResult[];
 }
 
 export interface AnalyzeTreasuryRiskInput {

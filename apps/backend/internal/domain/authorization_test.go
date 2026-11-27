@@ -66,11 +66,18 @@ func TestCheckTreasuryAccess(t *testing.T) {
 		}
 	})
 
-	t.Run("Analyst accessing unassigned treasury is forbidden", func(t *testing.T) {
+	t.Run("Analyst accessing unassigned treasury is permitted", func(t *testing.T) {
 		ctx := WithUserContext(context.Background(), ownerID, "analyst@quanta.local", RoleAnalyst)
+		if err := CheckTreasuryAccess(ctx, treasuryWithoutOwner); err != nil {
+			t.Fatalf("expected Analyst to access unassigned treasury, got %v", err)
+		}
+	})
+
+	t.Run("Viewer accessing unassigned treasury is forbidden", func(t *testing.T) {
+		ctx := WithUserContext(context.Background(), ownerID, "viewer@quanta.local", RoleViewer)
 		err := CheckTreasuryAccess(ctx, treasuryWithoutOwner)
 		if !errors.Is(err, ErrForbidden) {
-			t.Fatalf("expected ErrForbidden for unassigned treasury, got %v", err)
+			t.Fatalf("expected ErrForbidden for Viewer on unassigned treasury, got %v", err)
 		}
 	})
 }

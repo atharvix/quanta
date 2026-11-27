@@ -88,6 +88,17 @@ func TestRiskHandler_AnalyzeRisk(t *testing.T) {
 						NumScenarios: 1000,
 						VaR95:        0.038,
 					},
+					ScenarioSummary: []domain.ScenarioResult{
+						{
+							Regime:            "normal",
+							ProjectedReturn:   0.075,
+							StressedRisk:      0.06,
+							StressedLiquidity: 0.90,
+							IsSolvent:         true,
+							IsLiquid:          true,
+							Explanation:       "Normal market regime",
+						},
+					},
 				}, nil
 			},
 		}
@@ -110,6 +121,9 @@ func TestRiskHandler_AnalyzeRisk(t *testing.T) {
 		}
 		if resp.RiskBreakdown.RiskTier != "Moderate" {
 			t.Errorf("expected Moderate, got %s", resp.RiskBreakdown.RiskTier)
+		}
+		if len(resp.ScenarioSummary) != 1 || resp.ScenarioSummary[0].Regime != "normal" {
+			t.Errorf("expected 1 scenario_summary entry for regime 'normal', got %+v", resp.ScenarioSummary)
 		}
 	})
 
@@ -694,7 +708,7 @@ func TestRiskHandler_ResourceAuthorization(t *testing.T) {
 		}
 	})
 
-	t.Run("403 Forbidden when analyst accesses unassigned/legacy treasury on POST /risk/analyze", func(t *testing.T) {
+	t.Run("200 OK when analyst accesses unassigned/legacy treasury on POST /risk/analyze and 403 for viewer", func(t *testing.T) {
 		unassignedTreasury := &domain.Treasury{
 			ID:                validTreasuryID,
 			Name:              "Unassigned Legacy Treasury",
@@ -721,12 +735,23 @@ func TestRiskHandler_ResourceAuthorization(t *testing.T) {
 		rec := httptest.NewRecorder()
 		uRouter.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusForbidden {
-			t.Fatalf("expected 403 Forbidden for analyst on unassigned treasury, got %d (body: %s)", rec.Code, rec.Body.String())
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK for analyst on unassigned treasury, got %d (body: %s)", rec.Code, rec.Body.String())
+		}
+
+		viewerReq := httptest.NewRequest(http.MethodPost, "/api/v1/treasuries/"+validTreasuryID+"/risk/analyze", bytes.NewBufferString(validBody))
+		viewerCtx := domain.WithUserContext(viewerReq.Context(), "any-viewer", "viewer@quanta.local", domain.RoleViewer)
+		viewerReq = viewerReq.WithContext(viewerCtx)
+
+		viewerRec := httptest.NewRecorder()
+		uRouter.ServeHTTP(viewerRec, viewerReq)
+
+		if viewerRec.Code != http.StatusForbidden {
+			t.Fatalf("expected 403 Forbidden for viewer on unassigned treasury, got %d (body: %s)", viewerRec.Code, viewerRec.Body.String())
 		}
 	})
 
-	t.Run("403 Forbidden when analyst accesses unassigned/legacy treasury on POST /stress-test", func(t *testing.T) {
+	t.Run("200 OK when analyst accesses unassigned/legacy treasury on POST /stress-test", func(t *testing.T) {
 		unassignedTreasury := &domain.Treasury{
 			ID:                validTreasuryID,
 			Name:              "Unassigned Legacy Treasury",
@@ -753,8 +778,8 @@ func TestRiskHandler_ResourceAuthorization(t *testing.T) {
 		rec := httptest.NewRecorder()
 		uRouter.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusForbidden {
-			t.Fatalf("expected 403 Forbidden for analyst on unassigned treasury, got %d (body: %s)", rec.Code, rec.Body.String())
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK for analyst on unassigned treasury, got %d (body: %s)", rec.Code, rec.Body.String())
 		}
 	})
 
