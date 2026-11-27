@@ -11,7 +11,6 @@
   let errorMessage = $state<string | null>(null);
   let successMessage = $state<string | null>(null);
 
-  // Role modification confirmation state
   let showConfirmModal = $state(false);
   let selectedUser = $state<UserRecord | null>(null);
   let targetRole = $state<'admin' | 'analyst' | 'viewer'>('viewer');
@@ -22,17 +21,14 @@
   async function fetchUsers() {
     isLoading = true;
     errorMessage = null;
-
     try {
       const data = await api<UserRecord[]>('/api/v1/users');
       users = data || [];
     } catch (err: unknown) {
       if (err instanceof ApiError) {
-        if (err.status === 403) {
-          errorMessage = 'Forbidden: Administrative privileges required to view users.';
-        } else {
-          errorMessage = err.message || 'Failed to retrieve user registry.';
-        }
+        errorMessage = err.status === 403
+          ? 'Forbidden: Administrative privileges required to view users.'
+          : err.message || 'Failed to retrieve user registry.';
       } else if (err instanceof Error) {
         errorMessage = err.message;
       } else {
@@ -54,35 +50,23 @@
 
   async function confirmRoleChange() {
     if (!selectedUser) return;
-
     isUpdating = true;
     errorMessage = null;
     successMessage = null;
-
     try {
       const updated = await api<UserRecord>(`/api/v1/users/${selectedUser.id}/role`, {
         method: 'PATCH',
         body: { role: targetRole }
       });
-
-      successMessage = `Access role for "${updated.email}" updated to "${updated.role}".`;
-
-      // If the authenticated admin modified their own role, refresh local state
-      if ($user && selectedUser.id === $user.id) {
-        await me();
-      }
-
+      successMessage = `Updated role for ${updated.email} to ${updated.role}.`;
+      if ($user && selectedUser.id === $user.id) await me();
       showConfirmModal = false;
       selectedUser = null;
       await fetchUsers();
     } catch (err: unknown) {
-      if (err instanceof ApiError) {
-        errorMessage = err.message || 'Failed to update user role.';
-      } else if (err instanceof Error) {
-        errorMessage = err.message;
-      } else {
-        errorMessage = 'An unexpected error occurred during role reassignment.';
-      }
+      errorMessage = err instanceof ApiError
+        ? err.message || 'Failed to update user role.'
+        : err instanceof Error ? err.message : 'Role update failed.';
       showConfirmModal = false;
     } finally {
       isUpdating = false;
@@ -98,89 +82,76 @@
   });
 </script>
 
-<div class="page-container">
-  <div class="page-header">
+<svelte:head>
+  <title>Users — QUANTA</title>
+</svelte:head>
+
+<div class="page-shell">
+  <header class="page-head" data-enter>
     <div>
-      <h1 class="page-title">User Management</h1>
-      <p class="page-subtitle">Inspect registered operator identities and configure role permissions</p>
+      <h1>User Registry</h1>
+      <p>Operator accounts and role-based access scopes.</p>
     </div>
-    <div>
+    <div class="page-head-actions">
       <button type="button" class="btn btn-secondary btn-sm" onclick={fetchUsers} disabled={isLoading}>
         Refresh
       </button>
     </div>
-  </div>
+  </header>
 
   {#if successMessage}
-    <div class="alert alert-success">
-      {successMessage}
-    </div>
+    <div class="alert alert-success">{successMessage}</div>
   {/if}
-
   {#if errorMessage}
-    <div class="alert alert-danger" style="display: flex; justify-content: space-between; align-items: center;">
+    <div class="alert alert-danger row-between">
       <span>{errorMessage}</span>
-      <button type="button" class="btn btn-secondary btn-sm" onclick={fetchUsers}>
-        Retry
-      </button>
+      <button type="button" class="btn btn-secondary btn-xs" onclick={fetchUsers}>Retry</button>
     </div>
   {/if}
 
   {#if isLoading}
-    <div class="card empty-state">
-      <p class="state-message">Loading platform user registry...</p>
-    </div>
+    <div class="empty-msg">Loading users...</div>
   {:else if users.length === 0}
-    <div class="card empty-state">
-      <h3 class="state-title">No Users Found</h3>
-      <p class="state-message">No user accounts are registered in the database.</p>
-    </div>
+    <div class="empty-msg">No users found in registry.</div>
   {:else}
     <div class="table-container">
       <table class="table">
         <thead>
           <tr>
-            <th>Full Name</th>
-            <th>Email Address</th>
-            <th>Current Role</th>
-            <th>Assign New Role</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Reassign role</th>
           </tr>
         </thead>
         <tbody>
           {#each users as u (u.id)}
             <tr>
               <td>
-                <span class="user-fullname">{u.full_name || 'System Operator'}</span>
+                <span class="font-bold">{u.full_name || 'Operator'}</span>
                 {#if $user && u.id === $user.id}
-                  <span class="badge badge-viewer" style="margin-left: 0.5rem; font-size: 0.6875rem;">You</span>
+                  <span class="you-note">(you)</span>
                 {/if}
               </td>
-              <td class="user-email-cell">
-                <code>{u.email}</code>
-              </td>
+              <td class="font-mono">{u.email}</td>
+              <td><span class="badge badge-{u.role}">{u.role}</span></td>
               <td>
-                <span class="badge badge-{u.role}">
-                  {u.role}
-                </span>
-              </td>
-              <td>
-                <div class="role-control-wrap">
-                  <select
-                    class="form-input role-select"
-                    value={u.role}
-                    disabled={isUpdating}
-                    onchange={(e) => {
-                      const select = e.currentTarget;
-                      const val = select.value as 'admin' | 'analyst' | 'viewer';
-                      promptRoleChange(u, val);
-                      select.value = u.role; // Keep visually in sync until confirmed
-                    }}
-                  >
-                    {#each availableRoles as r}
-                      <option value={r} selected={r === u.role}>{r}</option>
-                    {/each}
-                  </select>
-                </div>
+                <select
+                  aria-label="Assign role for {u.email}"
+                  class="form-select role-select"
+                  value={u.role}
+                  disabled={isUpdating}
+                  onchange={(e) => {
+                    const select = e.currentTarget;
+                    const val = select.value as 'admin' | 'analyst' | 'viewer';
+                    promptRoleChange(u, val);
+                    select.value = u.role;
+                  }}
+                >
+                  {#each availableRoles as r}
+                    <option value={r} selected={r === u.role}>{r}</option>
+                  {/each}
+                </select>
               </td>
             </tr>
           {/each}
@@ -188,71 +159,54 @@
       </table>
     </div>
 
-    <div class="role-legend card" style="margin-top: 1.5rem;">
-      <h3 class="legend-title">Role Permission Reference</h3>
-      <div class="legend-grid">
-        <div class="legend-item">
-          <span class="badge badge-admin">admin</span>
-          <p class="legend-desc">Full system access: Manage operator accounts, reassign roles, and inspect security audit logs.</p>
-        </div>
-        <div class="legend-item">
-          <span class="badge badge-analyst">analyst</span>
-          <p class="legend-desc">Operational write access: Onboard treasuries, execute AI strategies, and orchestrate capital allocations.</p>
-        </div>
-        <div class="legend-item">
-          <span class="badge badge-viewer">viewer</span>
-          <p class="legend-desc">Read-only oversight: Inspect existing corporate treasuries, strategies, and historical runs.</p>
-        </div>
+    <div class="summary-strip cols-3" aria-label="Role permission scopes">
+      <div class="summary-cell">
+        <span class="summary-label">Admin</span>
+        <span class="summary-meta">All portfolios, role assignment, and audit journal inspection.</span>
+      </div>
+      <div class="summary-cell">
+        <span class="summary-label">Analyst</span>
+        <span class="summary-meta">Create and modify owned portfolios, run AI risk, stress, and QAOA optimizations.</span>
+      </div>
+      <div class="summary-cell">
+        <span class="summary-label">Viewer</span>
+        <span class="summary-meta">Read-only access to assigned treasuries, strategies, and reports.</span>
       </div>
     </div>
   {/if}
 
-  <!-- Confirmation Modal -->
   {#if showConfirmModal && selectedUser}
     <div class="modal-backdrop">
-      <div class="modal-card card">
-        <h2 class="modal-title">Confirm Role Reassignment</h2>
-        <p class="modal-message">
-          Are you sure you want to reassign the access level for <strong>{selectedUser.email}</strong>?
-        </p>
-
-        <div class="reassign-details">
+      <div class="modal-card">
+        <div class="modal-header">
           <div>
-            <span class="detail-label">Current Role</span>
-            <span class="badge badge-{selectedUser.role}">{selectedUser.role}</span>
-          </div>
-          <div class="arrow-indicator">&rarr;</div>
-          <div>
-            <span class="detail-label">Target Role</span>
-            <span class="badge badge-{targetRole}">{targetRole}</span>
+            <h2 class="modal-title">Confirm role change</h2>
+            <p class="modal-subtitle">{selectedUser.email}</p>
           </div>
         </div>
-
-        {#if $user && selectedUser.id === $user.id && targetRole !== 'admin'}
-          <div class="alert alert-danger" style="margin-top: 1rem; margin-bottom: 0;">
-            Warning: You are modifying your own account role. If downgraded, you will forfeit administrative access immediately.
+        <div class="modal-body">
+          <div class="reassign-row">
+            <span><span class="badge badge-{selectedUser.role}">{selectedUser.role}</span></span>
+            <span>&rarr;</span>
+            <span><span class="badge badge-{targetRole}">{targetRole}</span></span>
           </div>
-        {/if}
-
-        <div class="modal-actions">
+          {#if $user && selectedUser.id === $user.id && targetRole !== 'admin'}
+            <div class="alert alert-danger" style="margin-top: 1rem;">
+              Warning: downgrading your own account removes Admin permissions immediately.
+            </div>
+          {/if}
+        </div>
+        <div class="modal-footer">
           <button
             type="button"
-            class="btn btn-secondary"
+            class="btn btn-secondary btn-sm"
             disabled={isUpdating}
-            onclick={() => {
-              showConfirmModal = false;
-              selectedUser = null;
-            }}
+            onclick={() => { showConfirmModal = false; selectedUser = null; }}
           >
             Cancel
           </button>
-          <button
-            type="button"
-            class="btn btn-primary"
-            disabled={isUpdating}
-            onclick={confirmRoleChange}
-          >
-            {isUpdating ? 'Updating...' : 'Confirm Reassignment'}
+          <button type="button" class="btn btn-primary btn-sm" disabled={isUpdating} onclick={confirmRoleChange}>
+            {isUpdating ? 'Updating...' : 'Confirm'}
           </button>
         </div>
       </div>
@@ -261,157 +215,47 @@
 </div>
 
 <style>
-  .page-container {
-    max-width: 1100px;
-    margin: 0 auto;
-    padding: 2rem 1.5rem;
-    width: 100%;
-  }
-
-  .page-header {
+  .row-between {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 1.5rem;
-    gap: 1rem;
-    flex-wrap: wrap;
+    align-items: center;
   }
 
-  .page-title {
-    font-size: 1.75rem;
-    font-weight: 700;
-    color: var(--color-text);
-    margin-bottom: 0.25rem;
-  }
-
-  .page-subtitle {
-    font-size: 0.875rem;
+  .you-note {
+    margin-left: 0.35rem;
+    font-size: 0.75rem;
     color: var(--color-text-muted);
-  }
-
-  .user-fullname {
-    font-weight: 600;
-    color: var(--color-text);
-  }
-
-  .user-email-cell code {
-    font-size: 0.8125rem;
-  }
-
-  .role-control-wrap {
-    max-width: 160px;
   }
 
   .role-select {
-    padding: 0.25rem 0.5rem;
+    width: auto;
+    min-width: 130px;
+    min-height: 32px;
+    padding: 0.2rem 0.5rem;
     font-size: 0.8125rem;
-    height: 32px;
   }
 
-  .empty-state {
-    text-align: center;
-    padding: 3rem 1.5rem;
+  .summary-strip.cols-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .state-title {
-    font-size: 1.125rem;
-    font-weight: 600;
-    color: var(--color-text);
-    margin-bottom: 0.25rem;
-  }
-
-  .state-message {
-    font-size: 0.875rem;
-    color: var(--color-text-muted);
-  }
-
-  .role-legend {
-    padding: 1.25rem;
-  }
-
-  .legend-title {
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--color-text);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-bottom: 0.75rem;
-  }
-
-  .legend-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  .reassign-row {
+    display: flex;
+    align-items: center;
     gap: 1rem;
   }
 
-  .legend-item {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-  }
-
-  .legend-desc {
-    font-size: 0.8125rem;
+  .empty-msg {
+    padding: 2.25rem 1rem;
+    text-align: center;
     color: var(--color-text-muted);
-    line-height: 1.4;
+    border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
   }
 
-  /* Modal Styles */
-  .modal-backdrop {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background-color: rgba(15, 23, 42, 0.6);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 100;
-    padding: 1rem;
-  }
-
-  .modal-card {
-    width: 100%;
-    max-width: 460px;
-    background-color: var(--color-surface);
-    box-shadow: var(--shadow-md);
-  }
-
-  .modal-title {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: var(--color-text);
-    margin-bottom: 0.5rem;
-  }
-
-  .modal-message {
-    font-size: 0.875rem;
-    color: var(--color-text-muted);
-    line-height: 1.5;
-  }
-
-  .reassign-details {
-    display: flex;
-    align-items: center;
-    justify-content: space-around;
-    background-color: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    padding: 1rem;
-    margin-top: 1rem;
-  }
-
-  .arrow-indicator {
-    font-size: 1.125rem;
-    color: var(--color-text-muted);
-  }
-
-  .modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.75rem;
-    margin-top: 1.5rem;
+  @media (max-width: 768px) {
+    .summary-strip.cols-3 {
+      grid-template-columns: 1fr;
+    }
   }
 </style>
-

@@ -1,12 +1,18 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-radius="sharp">
 	<head>
 		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<meta name="text-scale" content="scale" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+		<meta name="page-type" content="software" />
+		<meta name="site-kind" content="software" />
+		<meta name="description" content="QUANTA — Corporate treasury balance sheets, Bayesian risk inference, and classical vs. QAOA optimization." />
+		<meta name="theme-color" content="#f8f9fa" />
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+		<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..500&display=swap" rel="stylesheet" />
 		<script>
 			try {
-				var saved = localStorage.getItem('quanta_theme') || 'dark';
+				var saved = localStorage.getItem('quanta_theme') || 'light';
 				var resolved = saved === 'system'
 					? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
 					: saved;

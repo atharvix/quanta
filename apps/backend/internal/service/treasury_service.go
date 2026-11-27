@@ -47,7 +47,19 @@ func (s *TreasuryService) List(ctx context.Context, limit, offset int) ([]domain
 		return nil, fmt.Errorf("%w: offset must be non-negative", domain.ErrInvalidPagination)
 	}
 
-	return s.repo.List(ctx, limit, offset)
+	items, err := s.repo.List(ctx, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := make([]domain.Treasury, 0, len(items))
+	for _, t := range items {
+		tCopy := t
+		if domain.CheckTreasuryAccess(ctx, &tCopy) == nil {
+			filtered = append(filtered, t)
+		}
+	}
+	return filtered, nil
 }
 
 // GetByID validates the UUID format before querying the repository and enforcing resource-level authorization.

@@ -9,7 +9,6 @@
   import { theme } from "$lib/theme";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import Header from "$lib/components/Header.svelte";
-  import ThemeToggle from "$lib/components/ThemeToggle.svelte";
   import type { LayoutProps } from "./$types";
 
   let { children }: LayoutProps = $props();
@@ -59,21 +58,18 @@
     }
   });
 
-  // Close mobile drawer on route change
   $effect(() => {
-    // depend on pathname
     const _ = page.url.pathname;
     isMobileOpen = false;
   });
 </script>
 
 <svelte:head>
-  <title>QUANTA - Autonomous Financial Treasury & Capital Optimization</title>
+  <title>QUANTA — Corporate Treasury &amp; Capital Optimization</title>
 </svelte:head>
 
 <div class="quanta-shell">
   {#if $token && $user && !isAuthPage}
-    <!-- Authenticated Enterprise Shell -->
     <Sidebar bind:isCollapsed bind:isMobileOpen />
 
     <div class="shell-body" class:sidebar-collapsed={isCollapsed}>
@@ -83,7 +79,6 @@
       </main>
     </div>
   {:else}
-    <!-- Full-Bleed Auth & Public Mode -->
     <div class="auth-fullscreen">
       {@render children()}
     </div>
@@ -98,13 +93,12 @@
     background-color: var(--color-bg);
   }
 
-  /* Authenticated Shell Layout */
   .shell-body {
     display: flex;
     flex-direction: column;
     min-height: 100vh;
     margin-left: var(--sidebar-width);
-    transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: margin-left 160ms var(--ease);
   }
 
   .shell-body.sidebar-collapsed {
@@ -113,14 +107,12 @@
 
   .main-content {
     flex: 1;
-    padding: 1.75rem 2rem 3rem 2rem;
-    max-width: 1600px;
+    padding: 1.75rem 2rem 3rem;
+    max-width: 1400px;
     width: 100%;
     margin: 0 auto;
-    box-sizing: border-box;
   }
 
-  /* Auth Fullscreen Mode */
   .auth-fullscreen {
     min-height: 100vh;
     width: 100%;
@@ -129,7 +121,6 @@
     background-color: var(--color-bg);
   }
 
-  /* Responsive Breakpoints */
   @media (max-width: 1024px) {
     .shell-body,
     .shell-body.sidebar-collapsed {
@@ -137,7 +128,7 @@
     }
 
     .main-content {
-      padding: 1.25rem 1rem 2rem 1rem;
+      padding: 1.25rem 1rem 2rem;
     }
   }
 </style>

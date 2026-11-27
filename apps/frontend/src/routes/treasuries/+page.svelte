@@ -56,10 +56,7 @@
 
   function validateCreate(): boolean {
     const errors: typeof fieldErrors = {};
-
-    if (!name.trim()) {
-      errors.name = 'Treasury name is required.';
-    }
+    if (!name.trim()) errors.name = 'Treasury name is required.';
 
     const cap = parseFloat(totalCapital);
     if (!totalCapital.trim() || isNaN(cap) || cap <= 0) {
@@ -85,13 +82,9 @@
     formError = null;
     formDetails = [];
     createSuccessMessage = null;
-
-    if (!validateCreate()) {
-      return;
-    }
+    if (!validateCreate()) return;
 
     isCreating = true;
-
     try {
       const created = await api<Treasury>('/api/v1/treasuries', {
         method: 'POST',
@@ -104,23 +97,26 @@
         }
       });
 
-      createSuccessMessage = `Treasury "${created.name}" onboarded successfully.`;
+      showCreateForm = false;
       name = '';
+      baseCurrency = 'INR';
       totalCapital = '';
       riskTolerance = '0.50';
       minLiquidityRatio = '0.20';
-      showCreateForm = false;
+      fieldErrors = {};
+      createSuccessMessage = `Treasury "${created.name}" created.`;
+
       await fetchTreasuries(0);
     } catch (err: unknown) {
       if (err instanceof ApiError) {
-        formError = err.message || 'Validation failed.';
-        if (err.details && err.details.length > 0) {
-          formDetails = err.details;
-        }
+        formError = err.status === 403
+          ? 'Access denied: insufficient permissions to create treasuries.'
+          : err.message || 'Failed to create treasury.';
+        if (err.details?.length) formDetails = err.details;
       } else if (err instanceof Error) {
         formError = err.message;
       } else {
-        formError = 'Failed to create corporate treasury.';
+        formError = 'An unexpected error occurred while creating the treasury.';
       }
     } finally {
       isCreating = false;
@@ -132,48 +128,52 @@
   });
 </script>
 
-<div class="page-container">
-  <div class="page-header">
+<svelte:head>
+  <title>Treasuries — QUANTA</title>
+</svelte:head>
+
+<div class="page-shell">
+  <header class="page-head" data-enter>
     <div>
-      <h1 class="page-title">Corporate Treasuries</h1>
-      <p class="page-subtitle">Multi-currency balance sheets under autonomous capital allocation</p>
+      <h1>Corporate Treasuries</h1>
+      <p>Multi-currency portfolios with role-scoped isolation and constraint policies.</p>
     </div>
 
-    <div>
+    <div class="page-head-actions">
       {#if canWrite($user?.role)}
         <button
           type="button"
-          class="btn btn-primary"
+          class="btn btn-primary btn-sm"
           onclick={() => (showCreateForm = !showCreateForm)}
         >
-          {showCreateForm ? 'Cancel' : 'New Treasury'}
+          {showCreateForm ? 'Cancel' : 'New treasury'}
         </button>
       {/if}
     </div>
-  </div>
+  </header>
 
   {#if !canWrite($user?.role)}
-    <div class="notice-banner" style="margin-bottom: 1.5rem;">
-      Read-only access: Your current role ({$user?.role || 'viewer'}) permits inspection only. Analyst or Admin credentials are required to onboard new balance sheets.
+    <div class="notice-banner">
+      Read-only access: your role ({$user?.role || 'viewer'}) permits inspection only.
     </div>
   {/if}
 
   {#if createSuccessMessage}
-    <div class="alert alert-success">
-      {createSuccessMessage}
-    </div>
+    <div class="alert alert-success">{createSuccessMessage}</div>
   {/if}
 
   {#if showCreateForm && canWrite($user?.role)}
-    <div class="card create-card">
-      <h2 class="card-title">Onboard New Corporate Treasury</h2>
-      <p class="card-subtitle">Define capital base, reference currency, and policy constraints.</p>
+    <div class="surface-panel">
+      <div class="panel-title-row">
+        <h2 class="section-title">Create corporate treasury</h2>
+        <p class="section-subtitle">Define capital base, reporting currency, and policy bounds.</p>
+      </div>
 
       {#if formError}
-        <div class="alert alert-danger" style="margin-top: 1rem;">
+        <div class="alert alert-danger" style="margin-top: 0.875rem;">
           <p><strong>{formError}</strong></p>
           {#if formDetails.length > 0}
-            <ul style="margin-top: 0.5rem; padding-left: 1.25rem;">
+            <ul style="margin-top: 0.4rem; padding-left: 1.25rem;">
               {#each formDetails as d}
                 <li>{d}</li>
               {/each}
@@ -182,16 +182,16 @@
         </div>
       {/if}
 
-      <form onsubmit={handleCreate} novalidate style="margin-top: 1.25rem;">
+      <form onsubmit={handleCreate} novalidate style="margin-top: 1rem;">
         <div class="form-grid">
           <div class="form-group">
-            <label for="treasuryName" class="form-label">Treasury Name</label>
+            <label for="treasuryName" class="form-label">Treasury name</label>
             <input
               id="treasuryName"
               type="text"
               class="form-input"
               class:has-error={!!fieldErrors.name}
-              placeholder="e.g. Acme Corp Treasury"
+              placeholder="Meridian Treasury"
               bind:value={name}
               disabled={isCreating}
             />
@@ -201,27 +201,27 @@
           </div>
 
           <div class="form-group">
-            <label for="baseCurrency" class="form-label">Base Currency</label>
+            <label for="baseCurrency" class="form-label">Currency</label>
             <input
               id="baseCurrency"
               type="text"
-              class="form-input"
-              placeholder="INR"
+              class="form-input font-mono"
+              placeholder="USD"
               bind:value={baseCurrency}
               disabled={isCreating}
             />
           </div>
 
           <div class="form-group">
-            <label for="totalCapital" class="form-label">Total Capital</label>
+            <label for="totalCapital" class="form-label">Total capital</label>
             <input
               id="totalCapital"
               type="number"
               step="any"
               min="0.01"
-              class="form-input"
+              class="form-input font-mono"
               class:has-error={!!fieldErrors.totalCapital}
-              placeholder="e.g. 10000000"
+              placeholder="10000000"
               bind:value={totalCapital}
               disabled={isCreating}
             />
@@ -231,14 +231,14 @@
           </div>
 
           <div class="form-group">
-            <label for="riskTolerance" class="form-label">Risk Tolerance (0.00 to 1.00)</label>
+            <label for="riskTolerance" class="form-label">Risk tolerance (0.00 to 1.00)</label>
             <input
               id="riskTolerance"
               type="number"
               step="0.05"
               min="0"
               max="1"
-              class="form-input"
+              class="form-input font-mono"
               class:has-error={!!fieldErrors.riskTolerance}
               placeholder="0.50"
               bind:value={riskTolerance}
@@ -250,14 +250,14 @@
           </div>
 
           <div class="form-group">
-            <label for="minLiquidityRatio" class="form-label">Min Liquidity Ratio (0.00 to 1.00)</label>
+            <label for="minLiquidityRatio" class="form-label">Min liquidity ratio (0.00 to 1.00)</label>
             <input
               id="minLiquidityRatio"
               type="number"
               step="0.05"
               min="0"
               max="1"
-              class="form-input"
+              class="form-input font-mono"
               class:has-error={!!fieldErrors.minLiquidityRatio}
               placeholder="0.20"
               bind:value={minLiquidityRatio}
@@ -269,16 +269,11 @@
           </div>
         </div>
 
-        <div style="display: flex; gap: 0.75rem; margin-top: 1rem;">
-          <button type="submit" class="btn btn-primary" disabled={isCreating}>
-            {isCreating ? 'Onboarding...' : 'Save Treasury'}
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary btn-sm" disabled={isCreating}>
+            {isCreating ? 'Creating...' : 'Save treasury'}
           </button>
-          <button
-            type="button"
-            class="btn btn-secondary"
-            disabled={isCreating}
-            onclick={() => (showCreateForm = false)}
-          >
+          <button type="button" class="btn btn-secondary btn-sm" disabled={isCreating} onclick={() => (showCreateForm = false)}>
             Cancel
           </button>
         </div>
@@ -287,31 +282,20 @@
   {/if}
 
   {#if errorMessage}
-    <div class="alert alert-danger" style="display: flex; justify-content: space-between; align-items: center;">
+    <div class="alert alert-danger row-between">
       <span>{errorMessage}</span>
-      <button type="button" class="btn btn-secondary btn-sm" onclick={() => fetchTreasuries(offset)}>
-        Retry
-      </button>
+      <button type="button" class="btn btn-secondary btn-xs" onclick={() => fetchTreasuries(offset)}>Retry</button>
     </div>
   {/if}
 
   {#if isLoading}
-    <div class="card empty-state">
-      <p class="state-message">Loading corporate treasuries...</p>
-    </div>
+    <div class="empty-box">Loading corporate treasuries...</div>
   {:else if treasuries.length === 0}
-    <div class="card empty-state">
-      <h3 class="state-title">No Treasuries Found</h3>
-      <p class="state-message">
-        {#if offset > 0}
-          No additional treasuries exist on this page.
-        {:else}
-          No corporate treasuries have been onboarded yet.
-        {/if}
-      </p>
+    <div class="empty-box">
+      <p>No corporate treasuries on record.</p>
       {#if offset > 0}
-        <button type="button" class="btn btn-secondary btn-sm" style="margin-top: 1rem;" onclick={() => fetchTreasuries(0)}>
-          Return to First Page
+        <button type="button" class="btn btn-secondary btn-sm" style="margin-top: 0.75rem;" onclick={() => fetchTreasuries(0)}>
+          Return to page 1
         </button>
       {/if}
     </div>
@@ -320,37 +304,25 @@
       <table class="table">
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Base Currency</th>
-            <th>Total Capital</th>
-            <th>Risk Tolerance</th>
-            <th>Min Liquidity</th>
-            <th>Created Date</th>
+            <th>Portfolio name</th>
+            <th>Currency</th>
+            <th class="text-right">Total capital</th>
+            <th class="text-right">Risk tolerance</th>
+            <th class="text-right">Min liquidity</th>
+            <th class="text-right">Created</th>
           </tr>
         </thead>
         <tbody>
           {#each treasuries as t (t.id)}
             <tr>
               <td>
-                <a href="/treasuries/{t.id}" class="treasury-name-link">
-                  {t.name}
-                </a>
+                <a href="/treasuries/{t.id}" class="portfolio-link">{t.name}</a>
               </td>
-              <td>
-                <span class="currency-tag">{t.base_currency}</span>
-              </td>
-              <td class="numeric-cell">
-                {formatCurrency(t.total_capital, t.base_currency)}
-              </td>
-              <td>
-                {formatPercent(t.risk_tolerance)}
-              </td>
-              <td>
-                {formatPercent(t.min_liquidity_ratio)}
-              </td>
-              <td>
-                {formatDate(t.created_at)}
-              </td>
+              <td class="font-mono">{t.base_currency}</td>
+              <td class="text-right numeric-cell">{formatCurrency(t.total_capital, t.base_currency)}</td>
+              <td class="text-right numeric-cell">{formatPercent(t.risk_tolerance)}</td>
+              <td class="text-right numeric-cell">{formatPercent(t.min_liquidity_ratio)}</td>
+              <td class="text-right muted-cell">{formatDate(t.created_at)}</td>
             </tr>
           {/each}
         </tbody>
@@ -358,9 +330,7 @@
     </div>
 
     <div class="pagination">
-      <span class="pagination-info">
-        Showing records {offset + 1} to {offset + treasuries.length}
-      </span>
+      <span class="pagination-info">Showing {offset + 1} to {offset + treasuries.length}</span>
       <div class="pagination-actions">
         <button
           type="button"
@@ -384,95 +354,44 @@
 </div>
 
 <style>
-  .page-container {
-    max-width: 1100px;
-    margin: 0 auto;
-    padding: 2rem 1.5rem;
-    width: 100%;
-  }
-
-  .page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 1.5rem;
-    gap: 1rem;
-    flex-wrap: wrap;
-  }
-
-  .page-title {
-    font-size: 1.75rem;
-    font-weight: 700;
-    color: var(--color-text);
-    margin-bottom: 0.25rem;
-  }
-
-  .page-subtitle {
-    font-size: 0.875rem;
-    color: var(--color-text-muted);
-  }
-
-  .create-card {
-    margin-bottom: 2rem;
-  }
-
-  .card-title {
-    font-size: 1.125rem;
-    font-weight: 600;
-    color: var(--color-text);
-  }
-
-  .card-subtitle {
-    font-size: 0.8125rem;
-    color: var(--color-text-muted);
-    margin-top: 0.125rem;
-  }
-
   .form-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 0.875rem;
   }
 
-  .treasury-name-link {
-    font-weight: 600;
+  .form-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+  }
+
+  .row-between {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .portfolio-link {
+    font-weight: 500;
+    color: var(--color-text);
+  }
+
+  .portfolio-link:hover {
     color: var(--color-primary);
-  }
-
-  .treasury-name-link:hover {
     text-decoration: underline;
   }
 
-  .currency-tag {
-    display: inline-block;
-    padding: 0.15rem 0.4rem;
-    background-color: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    font-size: 0.75rem;
-    font-weight: 600;
-  }
-
-  .numeric-cell {
-    font-variant-numeric: tabular-nums;
-    font-weight: 500;
-  }
-
-  .empty-state {
-    text-align: center;
-    padding: 3rem 1.5rem;
-  }
-
-  .state-title {
-    font-size: 1.125rem;
-    font-weight: 600;
-    color: var(--color-text);
-    margin-bottom: 0.25rem;
-  }
-
-  .state-message {
-    font-size: 0.875rem;
+  .muted-cell {
     color: var(--color-text-muted);
+    font-size: 0.8125rem;
+  }
+
+  .empty-box {
+    padding: 2.5rem 1rem;
+    text-align: center;
+    color: var(--color-text-muted);
+    border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
   }
 </style>
-

@@ -1322,194 +1322,130 @@
     }
   });
 </script>
+<svelte:head>
+  <title>{treasury ? `${treasury.name} — QUANTA` : 'Portfolio — QUANTA'}</title>
+</svelte:head>
 
-<div class="page-container">
-  <div class="navigation-bar">
-    <a href="/treasuries" class="btn btn-secondary btn-sm">
-      Back to Treasuries
-    </a>
+<div class="page-shell">
+  <div class="nav-row">
+    <a href="/treasuries" class="back-link">&larr; Back to treasuries</a>
   </div>
 
   {#if isLoadingTreasury}
-    <div class="card empty-card">
-      <p class="state-message">Loading treasury profile...</p>
-    </div>
+    <div class="empty-box">Loading treasury portfolio...</div>
   {:else if isNotFound}
-    <div class="card not-found-card">
-      <h2 class="state-title">Treasury Not Found</h2>
-      <p class="state-message">The corporate treasury with ID "{treasuryId}" could not be located or does not exist.</p>
-      <div style="margin-top: 1.5rem;">
-        <a href="/treasuries" class="btn btn-primary">
-          Return to Treasuries List
-        </a>
-      </div>
+    <div class="empty-box">
+      <h2>Treasury Not Found</h2>
+      <p>The portfolio "{treasuryId}" could not be found.</p>
+      <a href="/treasuries" class="btn btn-primary btn-sm" style="margin-top: 1rem;">Return to treasuries</a>
     </div>
   {:else if treasuryError}
-    <div class="alert alert-danger" style="display: flex; justify-content: space-between; align-items: center;">
+    <div class="alert alert-danger row-between">
       <span>{treasuryError}</span>
-      <button type="button" class="btn btn-secondary btn-sm" onclick={fetchTreasuryDetails}>
-        Retry
-      </button>
+      <button type="button" class="btn btn-secondary btn-xs" onclick={fetchTreasuryDetails}>Retry</button>
     </div>
   {:else if treasury}
-    <!-- Treasury Overview Card -->
-    <div class="card treasury-card">
-      <div class="treasury-header">
-        <div>
-          <h1 class="treasury-title">{treasury.name}</h1>
-          <p class="treasury-id">ID: {treasury.id}</p>
-        </div>
-        <div style="display: flex; align-items: center; gap: 0.75rem;">
-          <span class="currency-badge">{treasury.base_currency}</span>
-          {#if canWrite($user?.role)}
-            <button
-              type="button"
-              class="btn btn-secondary btn-sm"
-              onclick={openEditTreasuryModal}
-            >
-              Edit Treasury
-            </button>
-            <button
-              type="button"
-              class="btn btn-primary btn-sm"
-              onclick={() => {
-                activeTab = 'strategy';
-                showGenerator = !showGenerator;
-              }}
-            >
-              {showGenerator && activeTab === 'strategy' ? 'Close Generator' : 'Generate Strategy'}
-            </button>
-          {/if}
-        </div>
+    <header class="page-head" data-enter>
+      <div>
+        <h1>{treasury.name}</h1>
+        <p>
+          <span class="font-mono">{treasury.base_currency}</span> &middot;
+          ID <code class="font-mono">{treasury.id}</code> &middot;
+          Updated {formatDate(treasury.updated_at)}
+        </p>
       </div>
 
-      <div class="detail-grid" style="margin-top: 1.5rem;">
-        <div class="detail-item">
-          <span class="detail-label">Base Currency</span>
-          <span class="detail-value">{treasury.base_currency}</span>
-        </div>
-
-        <div class="detail-item">
-          <span class="detail-label">Total Capital Base</span>
-          <span class="detail-value">{formatCurrency(treasury.total_capital, treasury.base_currency)}</span>
-        </div>
-
-        <div class="detail-item">
-          <span class="detail-label">Risk Tolerance Policy</span>
-          <span class="detail-value">{formatPercent(treasury.risk_tolerance)}</span>
-        </div>
-
-        <div class="detail-item">
-          <span class="detail-label">Minimum Liquidity Floor</span>
-          <span class="detail-value">{formatPercent(treasury.min_liquidity_ratio)}</span>
-        </div>
-
-        <div class="detail-item">
-          <span class="detail-label">Onboarding Timestamp</span>
-          <span class="detail-value" style="font-size: 0.9375rem;">{formatDate(treasury.created_at)}</span>
-        </div>
-
-        <div class="detail-item">
-          <span class="detail-label">Last Policy Modification</span>
-          <span class="detail-value" style="font-size: 0.9375rem;">{formatDate(treasury.updated_at)}</span>
-        </div>
+      <div class="page-head-actions">
+        {#if canWrite($user?.role)}
+          <button type="button" class="btn btn-secondary btn-sm" onclick={openEditTreasuryModal}>
+            Edit treasury
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary btn-sm"
+            onclick={() => {
+              activeTab = 'strategy';
+              showGenerator = !showGenerator;
+            }}
+          >
+            {showGenerator && activeTab === 'strategy' ? 'Close generator' : 'Generate strategy'}
+          </button>
+        {/if}
       </div>
-    </div>
+    </header>
 
-    <!-- Executive Balance Sheet Summary Row -->
-    <div class="balance-sheet-kpis">
-      <div class="kpi-card">
-        <div class="kpi-header">
-          <span class="kpi-category">Capital Base</span>
-          <span class="currency-tag">{treasury.base_currency}</span>
-        </div>
-        <div class="kpi-value">{formatCurrency(totalCapital, treasury.base_currency)}</div>
-        <p class="kpi-subtext">Total balance sheet assets on record</p>
+    <!-- Unboxed 5-column Balance Sheet & Policy Summary Strip -->
+    <section class="summary-strip cols-5" aria-label="Portfolio balance sheet summary">
+      <div class="summary-cell">
+        <span class="summary-label">Capital Base</span>
+        <span class="summary-value">{formatCurrency(totalCapital, treasury.base_currency)}</span>
+        <span class="summary-meta">{treasury.base_currency} &middot; {formatPercent(treasury.risk_tolerance)} risk limit</span>
       </div>
 
-      <div class="kpi-card">
-        <div class="kpi-header">
-          <span class="kpi-category">Debt Obligations</span>
-          <span class="badge badge-viewer" style="font-size: 0.6875rem;">{activeLiabilityCount} Facilities</span>
-        </div>
-        <div class="kpi-value">{formatCurrency(totalLiabilitiesPrincipal, treasury.base_currency)}</div>
-        <p class="kpi-subtext">Total outstanding liability principal</p>
+      <div class="summary-cell">
+        <span class="summary-label">Debt Obligations</span>
+        <span class="summary-value">{formatCurrency(totalLiabilitiesPrincipal, treasury.base_currency)}</span>
+        <span class="summary-meta">{activeLiabilityCount} facilities</span>
       </div>
 
-      <div class="kpi-card">
-        <div class="kpi-header">
-          <span class="kpi-category">Net Capital Position</span>
-          <span class="status-indicator-dot" class:dot-positive={netCapitalPosition >= 0} class:dot-negative={netCapitalPosition < 0}></span>
-        </div>
-        <div class="kpi-value" class:val-positive={netCapitalPosition >= 0} class:val-negative={netCapitalPosition < 0}>
+      <div class="summary-cell">
+        <span class="summary-label">Net Position</span>
+        <span class="summary-value {netCapitalPosition >= 0 ? 'pos-val' : 'neg-val'}">
           {formatCurrency(netCapitalPosition, treasury.base_currency)}
-        </div>
-        <p class="kpi-subtext">{netCapitalPosition >= 0 ? 'Unencumbered net capital surplus' : 'Balance sheet capital deficit'}</p>
+        </span>
+        <span class="summary-meta">{netCapitalPosition >= 0 ? 'Net surplus' : 'Capital deficit'}</span>
       </div>
 
-      <div class="kpi-card">
-        <div class="kpi-header">
-          <span class="kpi-category">Mandatory Debt Reserves</span>
-          <span class="badge badge-analyst" style="font-size: 0.6875rem;">Statutory</span>
-        </div>
-        <div class="kpi-value">{formatCurrency(mandatoryDebtReserves, treasury.base_currency)}</div>
-        <p class="kpi-subtext">Liquidity ring-fenced for debt service</p>
+      <div class="summary-cell">
+        <span class="summary-label">Mandatory Reserves</span>
+        <span class="summary-value">{formatCurrency(mandatoryDebtReserves, treasury.base_currency)}</span>
+        <span class="summary-meta">Floor {formatPercent(treasury.min_liquidity_ratio)}</span>
       </div>
 
-      <div class="kpi-card">
-        <div class="kpi-header">
-          <span class="kpi-category">Asset Universe</span>
-          <span class="badge badge-pass" style="font-size: 0.6875rem;">Live</span>
-        </div>
-        <div class="kpi-value">{activeAssetCount} <span style="font-size: 0.875rem; font-weight: 500; color: var(--color-text-muted);">classes</span></div>
-        <p class="kpi-subtext">Eligible portfolio allocation candidates</p>
+      <div class="summary-cell">
+        <span class="summary-label">Asset Universe</span>
+        <span class="summary-value">{activeAssetCount}</span>
+        <span class="summary-meta">Persisted candidate assets</span>
       </div>
-    </div>
+    </section>
 
-    <!-- Real-time Action Feedback Banners -->
     {#if actionSuccessMessage}
-      <div class="alert alert-success" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+      <div class="alert alert-success row-between">
         <span>{actionSuccessMessage}</span>
-        <button type="button" class="btn btn-secondary btn-xs" onclick={() => (actionSuccessMessage = null)}>
-          Dismiss
-        </button>
+        <button type="button" class="btn btn-secondary btn-xs" onclick={() => (actionSuccessMessage = null)}>Dismiss</button>
       </div>
     {/if}
 
     {#if actionErrorMessage}
-      <div class="alert alert-danger" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+      <div class="alert alert-danger row-between">
         <span>{actionErrorMessage}</span>
-        <button type="button" class="btn btn-secondary btn-xs" onclick={() => (actionErrorMessage = null)}>
-          Dismiss
-        </button>
+        <button type="button" class="btn btn-secondary btn-xs" onclick={() => (actionErrorMessage = null)}>Dismiss</button>
       </div>
     {/if}
 
-    <!-- Read-only note for viewers -->
     {#if !canWrite($user?.role)}
-      <div class="notice-banner" style="margin-bottom: 2rem;">
-        Read-only access: Your current role ({$user?.role || 'viewer'}) permits inspection only. Analyst or Admin credentials are required to synthesize new strategies or execute capital orchestration.
+      <div class="notice-banner">
+        Read-only access: your role ({$user?.role || 'viewer'}) permits inspection only. Analyst or Admin access is required to edit holdings or run allocations.
       </div>
     {/if}
 
-    <!-- Empty Assets Onboarding Banner (Never spoofed as persisted) -->
     {#if !isLoadingAssets && !assetsError && assets.length === 0}
-      <div class="alert alert-warning" style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
+      <div class="alert alert-warning row-between" style="flex-wrap: wrap;">
         <div>
           <strong>This treasury has no persisted assets yet.</strong>
-          <span style="display: block; font-size: 0.875rem; margin-top: 0.25rem;">
-            Add investment assets manually or persist a starter portfolio to PostgreSQL so allocations, risk models, and reporting read real database records.
-          </span>
+          <div style="font-size: 0.8125rem; margin-top: 0.2rem;">
+            Add investment assets or commit a starter institutional portfolio to PostgreSQL so allocations and risk models use real data.
+          </div>
         </div>
         {#if canWrite($user?.role)}
-          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          <div class="btn-row">
             <button
               type="button"
               class="btn btn-primary btn-sm"
               onclick={saveStarterPortfolioToDatabase}
               disabled={isSavingStarter || isLoadingAssets || isLoadingLiabilities}
             >
-              {isSavingStarter ? 'Saving Starter Portfolio...' : 'Save Starter Portfolio to Database'}
+              {isSavingStarter ? 'Saving...' : 'Save starter portfolio to DB'}
             </button>
             <button
               type="button"
@@ -1517,173 +1453,107 @@
               onclick={openAddAssetModal}
               disabled={isSavingStarter}
             >
-              + Add Asset
+              Add asset
             </button>
           </div>
         {/if}
       </div>
     {/if}
 
-    <!-- Workspace Navigation Tabs -->
-    <div class="tabs-nav">
-      <button
-        type="button"
-        class="tab-btn"
-        class:tab-active={activeTab === 'balance-sheet'}
-        onclick={() => (activeTab = 'balance-sheet')}
-      >
-        Balance Sheet & Universe
+    <!-- Clean Underline Tab Navigation -->
+    <nav class="tab-bar" aria-label="Portfolio sections">
+      <button type="button" class="tab-link-btn" class:active={activeTab === 'balance-sheet'} onclick={() => (activeTab = 'balance-sheet')}>
+        Balance Sheet
       </button>
-      <button
-        type="button"
-        class="tab-btn"
-        class:tab-active={activeTab === 'strategy'}
-        onclick={() => (activeTab = 'strategy')}
-      >
+      <button type="button" class="tab-link-btn" class:active={activeTab === 'strategy'} onclick={() => (activeTab = 'strategy')}>
         Capital Allocation
       </button>
-      <button
-        type="button"
-        class="tab-btn"
-        class:tab-active={activeTab === 'risk'}
-        onclick={() => (activeTab = 'risk')}
-      >
-        AI Risk Analysis & VaR
+      <button type="button" class="tab-link-btn" class:active={activeTab === 'risk'} onclick={() => (activeTab = 'risk')}>
+        Risk Analysis &amp; VaR
       </button>
-      <button
-        type="button"
-        class="tab-btn"
-        class:tab-active={activeTab === 'stress'}
-        onclick={() => (activeTab = 'stress')}
-      >
-        Adversarial Stress Testing
+      <button type="button" class="tab-link-btn" class:active={activeTab === 'stress'} onclick={() => (activeTab = 'stress')}>
+        Stress Testing
       </button>
-      <button
-        type="button"
-        class="tab-btn"
-        class:tab-active={activeTab === 'council'}
-        onclick={() => (activeTab = 'council')}
-      >
-        Multi-Agent Council
+      <button type="button" class="tab-link-btn" class:active={activeTab === 'council'} onclick={() => (activeTab = 'council')}>
+        Executive Council
       </button>
-    </div>
+    </nav>
 
-    <!-- TAB 0: BALANCE SHEET & ASSET UNIVERSE -->
+    <!-- TAB 0: BALANCE SHEET -->
     {#if activeTab === 'balance-sheet'}
-      <!-- Investment Asset Universe Card -->
-      <div class="card" style="margin-bottom: 2rem;">
-        <div class="section-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+      <section class="section-block" aria-label="Investment asset universe">
+        <div class="block-head">
           <div>
-            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
-              <h2 class="section-title">Investment Asset Universe</h2>
-              <span class="badge badge-pass">{activeAssetCount} Persisted</span>
-            </div>
-            <p class="section-subtitle">
-              Configured financial assets and investment vehicles evaluated during AI capital optimization runs.
-            </p>
+            <h2>Investment Assets ({activeAssetCount})</h2>
+            <p class="block-sub">Candidate financial instruments evaluated in allocation runs.</p>
           </div>
           {#if canWrite($user?.role)}
-            <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-              <button
-                type="button"
-                class="btn btn-secondary btn-sm"
-                onclick={handleLoadAndPersistSampleAssets}
-                disabled={isLoadingAssets}
-                title="Populate baseline corporate assets (Bonds, Equities, Commercial Paper)"
-              >
-                Reset to Sample Universe
+            <div class="btn-row">
+              <button type="button" class="btn btn-secondary btn-sm" onclick={handleLoadAndPersistSampleAssets} disabled={isLoadingAssets}>
+                Reset sample assets
               </button>
-              <button
-                type="button"
-                class="btn btn-primary btn-sm"
-                onclick={openAddAssetModal}
-                disabled={isLoadingAssets}
-              >
-                + Add Asset
+              <button type="button" class="btn btn-primary btn-sm" onclick={openAddAssetModal} disabled={isLoadingAssets}>
+                Add asset
               </button>
             </div>
           {/if}
         </div>
 
         {#if assetsError}
-          <div class="alert alert-danger" style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem;">
+          <div class="alert alert-danger row-between">
             <span>{assetsError}</span>
-            <button type="button" class="btn btn-secondary btn-sm" onclick={fetchAssets}>Retry</button>
+            <button type="button" class="btn btn-secondary btn-xs" onclick={fetchAssets}>Retry</button>
           </div>
         {/if}
 
         {#if isLoadingAssets}
-          <div class="empty-card">
-            <p class="state-message">Loading asset universe from secure PostgreSQL ledger...</p>
-          </div>
+          <div class="empty-box">Loading assets...</div>
         {:else if assets.length === 0}
-          <div class="empty-card">
-            <h3 class="state-title">No Investment Assets Configured</h3>
-            <p class="state-message">
-              This corporate treasury currently has no configured investment assets in its allocation universe.
-            </p>
+          <div class="empty-box">
+            <p>No investment assets recorded in PostgreSQL.</p>
             {#if canWrite($user?.role)}
-              <div style="margin-top: 1.25rem; display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
-                <button type="button" class="btn btn-primary" onclick={openAddAssetModal}>
-                  + Add First Asset
-                </button>
-                <button
-                  type="button"
-                  class="btn btn-secondary"
-                  onclick={saveStarterPortfolioToDatabase}
-                  disabled={isSavingStarter}
-                >
-                  {isSavingStarter ? 'Saving Starter Portfolio...' : 'Save Starter Portfolio to Database'}
+              <div class="btn-row" style="justify-content: center; margin-top: 0.875rem;">
+                <button type="button" class="btn btn-primary btn-sm" onclick={openAddAssetModal}>Add asset</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick={saveStarterPortfolioToDatabase} disabled={isSavingStarter}>
+                  {isSavingStarter ? 'Saving...' : 'Save starter portfolio'}
                 </button>
               </div>
             {/if}
           </div>
         {:else}
-          <div class="table-container" style="margin-top: 1rem;">
+          <div class="table-container">
             <table class="table">
               <thead>
                 <tr>
-                  <th>Identifier</th>
+                  <th>ID</th>
                   <th>Name</th>
-                  <th>Class / Type</th>
-                  <th style="text-align: right;">Exp. Return</th>
-                  <th style="text-align: right;">Risk Score</th>
-                  <th style="text-align: right;">Liquidity</th>
-                  <th style="text-align: right;">Cost</th>
-                  <th style="text-align: right;">Volatility</th>
+                  <th>Class</th>
+                  <th class="text-right">Exp. Return</th>
+                  <th class="text-right">Risk</th>
+                  <th class="text-right">Liquidity</th>
+                  <th class="text-right">Cost</th>
+                  <th class="text-right">Volatility</th>
                   {#if canWrite($user?.role)}
-                    <th style="text-align: right;">Actions</th>
+                    <th class="text-right">Actions</th>
                   {/if}
                 </tr>
               </thead>
               <tbody>
                 {#each assets as asset (asset.id)}
                   <tr>
-                    <td><code>{asset.id}</code></td>
-                    <td><strong>{asset.name}</strong></td>
-                    <td><span class="tag-pill">{asset.asset_type}</span></td>
-                    <td class="numeric-cell" style="text-align: right;">{formatPercent(asset.expected_return)}</td>
-                    <td class="numeric-cell" style="text-align: right;">{formatNumber(asset.risk)}</td>
-                    <td class="numeric-cell" style="text-align: right;">{formatNumber(asset.liquidity)}</td>
-                    <td class="numeric-cell" style="text-align: right;">{formatNumber(asset.cost)}</td>
-                    <td class="numeric-cell" style="text-align: right;">{asset.volatility !== undefined ? formatPercent(asset.volatility) : '-'}</td>
+                    <td class="font-mono muted-cell">{asset.id}</td>
+                    <td class="font-bold">{asset.name}</td>
+                    <td class="class-cell">{asset.asset_type.replaceAll('_', ' ')}</td>
+                    <td class="text-right numeric-cell">{formatPercent(asset.expected_return)}</td>
+                    <td class="text-right numeric-cell">{formatNumber(asset.risk)}</td>
+                    <td class="text-right numeric-cell">{formatNumber(asset.liquidity)}</td>
+                    <td class="text-right numeric-cell">{formatNumber(asset.cost)}</td>
+                    <td class="text-right numeric-cell">{asset.volatility !== undefined ? formatPercent(asset.volatility) : '—'}</td>
                     {#if canWrite($user?.role)}
-                      <td style="text-align: right;">
-                        <div style="display: flex; gap: 0.35rem; justify-content: flex-end;">
-                          <button
-                            type="button"
-                            class="btn btn-secondary btn-xs"
-                            onclick={() => openEditAssetModal(asset)}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            class="btn btn-danger btn-xs"
-                            onclick={() => openDeleteConfirm('asset', asset.id, asset.name)}
-                          >
-                            Delete
-                          </button>
+                      <td class="text-right">
+                        <div class="btn-row" style="justify-content: flex-end;">
+                          <button type="button" class="btn btn-secondary btn-xs" onclick={() => openEditAssetModal(asset)}>Edit</button>
+                          <button type="button" class="btn btn-danger btn-xs" onclick={() => openDeleteConfirm('asset', asset.id, asset.name)}>Delete</button>
                         </div>
                       </td>
                     {/if}
@@ -1693,121 +1563,79 @@
             </table>
           </div>
         {/if}
-      </div>
+      </section>
 
-      <!-- Liabilities & Debt Obligations Card -->
-      <div class="card" style="margin-bottom: 2rem;">
-        <div class="section-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+      <section class="section-block" aria-label="Debt obligations">
+        <div class="block-head">
           <div>
-            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
-              <h2 class="section-title">Liabilities & Debt Obligations</h2>
-              <span class="badge badge-viewer">{activeLiabilityCount} Active</span>
-            </div>
-            <p class="section-subtitle">
-              Contractual debt facilities, notes, and commitments requiring statutory liquidity provisioning.
-            </p>
+            <h2>Debt Obligations ({activeLiabilityCount})</h2>
+            <p class="block-sub">Contractual liabilities and mandatory liquidity reserve commitments.</p>
           </div>
           {#if canWrite($user?.role)}
-            <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-              <button
-                type="button"
-                class="btn btn-secondary btn-sm"
-                onclick={handleLoadAndPersistSampleLiabilities}
-                disabled={isLoadingLiabilities}
-                title="Populate baseline corporate senior revolving credit facility"
-              >
-                Reset to Sample Debt
+            <div class="btn-row">
+              <button type="button" class="btn btn-secondary btn-sm" onclick={handleLoadAndPersistSampleLiabilities} disabled={isLoadingLiabilities}>
+                Reset sample debt
               </button>
-              <button
-                type="button"
-                class="btn btn-primary btn-sm"
-                onclick={openAddLiabilityModal}
-                disabled={isLoadingLiabilities}
-              >
-                + Add Liability
+              <button type="button" class="btn btn-primary btn-sm" onclick={openAddLiabilityModal} disabled={isLoadingLiabilities}>
+                Add liability
               </button>
             </div>
           {/if}
         </div>
 
         {#if liabilitiesError}
-          <div class="alert alert-danger" style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem;">
+          <div class="alert alert-danger row-between">
             <span>{liabilitiesError}</span>
-            <button type="button" class="btn btn-secondary btn-sm" onclick={fetchLiabilities}>Retry</button>
+            <button type="button" class="btn btn-secondary btn-xs" onclick={fetchLiabilities}>Retry</button>
           </div>
         {/if}
 
         {#if isLoadingLiabilities}
-          <div class="empty-card">
-            <p class="state-message">Loading liabilities from secure PostgreSQL ledger...</p>
-          </div>
+          <div class="empty-box">Loading liabilities...</div>
         {:else if liabilities.length === 0}
-          <div class="empty-card">
-            <h3 class="state-title">No Debt Obligations Recorded</h3>
-            <p class="state-message">
-              This balance sheet has no outstanding debts or loan obligations. The full capital base is unencumbered.
-            </p>
+          <div class="empty-box">
+            <p>No debt obligations recorded. Full capital base is unencumbered.</p>
             {#if canWrite($user?.role)}
-              <div style="margin-top: 1.25rem; display: flex; gap: 0.75rem; justify-content: center;">
-                <button type="button" class="btn btn-primary" onclick={openAddLiabilityModal}>
-                  + Add Debt Obligation
-                </button>
-                <button type="button" class="btn btn-secondary" onclick={handleLoadAndPersistSampleLiabilities}>
-                  Load Sample Debt Facility
-                </button>
+              <div class="btn-row" style="justify-content: center; margin-top: 0.875rem;">
+                <button type="button" class="btn btn-primary btn-sm" onclick={openAddLiabilityModal}>Add debt obligation</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick={handleLoadAndPersistSampleLiabilities}>Load sample debt</button>
               </div>
             {/if}
           </div>
         {:else}
-          <div class="table-container" style="margin-top: 1rem;">
+          <div class="table-container">
             <table class="table">
               <thead>
                 <tr>
-                  <th>Identifier</th>
-                  <th>Name</th>
-                  <th style="text-align: right;">Principal</th>
-                  <th style="text-align: right;">Interest Rate</th>
-                  <th style="text-align: right;">Maturity</th>
-                  <th style="text-align: center;">Priority</th>
-                  <th style="text-align: center;">Statutory Reserve</th>
+                  <th>ID</th>
+                  <th>Facility</th>
+                  <th class="text-right">Principal</th>
+                  <th class="text-right">Interest</th>
+                  <th class="text-right">Maturity</th>
+                  <th class="text-right">Priority</th>
+                  <th>Reserve Status</th>
                   {#if canWrite($user?.role)}
-                    <th style="text-align: right;">Actions</th>
+                    <th class="text-right">Actions</th>
                   {/if}
                 </tr>
               </thead>
               <tbody>
                 {#each liabilities as liab (liab.id)}
                   <tr>
-                    <td><code>{liab.id}</code></td>
-                    <td><strong>{liab.name}</strong></td>
-                    <td class="numeric-cell" style="text-align: right;">{formatCurrency(liab.principal, treasury.base_currency)}</td>
-                    <td class="numeric-cell" style="text-align: right;">{formatPercent(liab.interest_rate)}</td>
-                    <td class="numeric-cell" style="text-align: right;">{liab.maturity_months ?? 12} mos</td>
-                    <td style="text-align: center;"><span class="tag-pill">P{liab.priority}</span></td>
-                    <td style="text-align: center;">
-                      {#if liab.is_mandatory_reserve}
-                        <span class="badge badge-analyst" style="font-size: 0.6875rem;">Mandatory</span>
-                      {:else}
-                        <span class="badge badge-viewer" style="font-size: 0.6875rem;">Discretionary</span>
-                      {/if}
+                    <td class="font-mono muted-cell">{liab.id}</td>
+                    <td class="font-bold">{liab.name}</td>
+                    <td class="text-right numeric-cell">{formatCurrency(liab.principal, treasury.base_currency)}</td>
+                    <td class="text-right numeric-cell">{formatPercent(liab.interest_rate)}</td>
+                    <td class="text-right numeric-cell">{liab.maturity_months ?? 12} mo</td>
+                    <td class="text-right numeric-cell">P{liab.priority}</td>
+                    <td class={liab.is_mandatory_reserve ? 'pos-val' : 'muted-cell'}>
+                      {liab.is_mandatory_reserve ? 'Mandatory reserve' : 'Discretionary'}
                     </td>
                     {#if canWrite($user?.role)}
-                      <td style="text-align: right;">
-                        <div style="display: flex; gap: 0.35rem; justify-content: flex-end;">
-                          <button
-                            type="button"
-                            class="btn btn-secondary btn-xs"
-                            onclick={() => openEditLiabilityModal(liab)}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            class="btn btn-danger btn-xs"
-                            onclick={() => openDeleteConfirm('liability', liab.id, liab.name)}
-                          >
-                            Delete
-                          </button>
+                      <td class="text-right">
+                        <div class="btn-row" style="justify-content: flex-end;">
+                          <button type="button" class="btn btn-secondary btn-xs" onclick={() => openEditLiabilityModal(liab)}>Edit</button>
+                          <button type="button" class="btn btn-danger btn-xs" onclick={() => openDeleteConfirm('liability', liab.id, liab.name)}>Delete</button>
                         </div>
                       </td>
                     {/if}
@@ -1817,1684 +1645,740 @@
             </table>
           </div>
         {/if}
-      </div>
+      </section>
     {/if}
 
     <!-- TAB 1: CAPITAL ALLOCATION STRATEGY -->
     {#if activeTab === 'strategy'}
-      <!-- Strategy Synthesis Form Card (Analyst/Admin only) -->
-    {#if showGenerator && canWrite($user?.role)}
-      <div class="card generator-card">
-        <div class="section-header">
-          <h2 class="section-title">Synthesize Capital Allocation Strategy</h2>
-          <p class="section-subtitle">
-            Configure asset universe, obligations, and algorithmic search parameters to execute orchestration.
-          </p>
-        </div>
-
-        {#if generationError}
-          <div class="alert alert-danger" style="margin-top: 1rem;">
-            <p><strong>{generationError}</strong></p>
-            {#if generationDetails.length > 0}
-              <ul style="margin-top: 0.5rem; padding-left: 1.25rem;">
-                {#each generationDetails as d}
-                  <li>{d}</li>
-                {/each}
-              </ul>
-            {/if}
+      {#if showGenerator && canWrite($user?.role)}
+        <div class="surface-panel stack-gap">
+          <div>
+            <h2>Run Strategy Search</h2>
+            <p class="block-sub">Configure search algorithm, step size, and liquidity threshold.</p>
           </div>
-        {/if}
 
-        {#if fieldValidationErrors.length > 0}
-          <div class="alert alert-danger" style="margin-top: 1rem;">
-            <p><strong>Please correct the following inputs:</strong></p>
-            <ul style="margin-top: 0.5rem; padding-left: 1.25rem;">
-              {#each fieldValidationErrors as err}
-                <li>{err}</li>
-              {/each}
-            </ul>
-          </div>
-        {/if}
-
-        <form onsubmit={handleGenerateStrategy} novalidate style="margin-top: 1.25rem;">
-          <div class="settings-grid">
-            <div class="form-group">
-              <label for="algorithmSelect" class="form-label">Search Algorithm</label>
-              <select
-                id="algorithmSelect"
-                class="form-input"
-                bind:value={selectedAlgorithm}
-                disabled={isGenerating}
-              >
-                {#each algorithmOptions as opt}
-                  <option value={opt.value}>{opt.label}</option>
-                {/each}
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label for="stepSizeInput" class="form-label">Discretization Step Size (Optional)</label>
-              <input
-                id="stepSizeInput"
-                type="number"
-                step="any"
-                min="0.01"
-                class="form-input"
-                placeholder={treasury ? `Auto (capital / 20), min ${(treasury.total_capital / 200).toFixed(2)}` : 'Leave blank for backend default (capital / 20)'}
-                bind:value={stepSize}
-                disabled={isGenerating}
-              />
-              {#if treasury}
-                <span style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.25rem; display: block;">
-                  Must keep steps &le; 200 (min step size: {(treasury.total_capital / 200).toFixed(2)}).
-                </span>
+          {#if generationError}
+            <div class="alert alert-danger">
+              <strong>{generationError}</strong>
+              {#if generationDetails.length > 0}
+                <ul class="err-list">
+                  {#each generationDetails as d}<li>{d}</li>{/each}
+                </ul>
               {/if}
             </div>
-
-            <div class="form-group">
-              <label for="minLiqInput" class="form-label">Liquidity Constraint Floor (0.00 to 1.00)</label>
-              <input
-                id="minLiqInput"
-                type="number"
-                step="0.05"
-                min="0"
-                max="1"
-                class="form-input"
-                bind:value={minLiquidity}
-                disabled={isGenerating}
-              />
-            </div>
-          </div>
-
-          <div class="checkbox-group" style="margin-bottom: 1.5rem;">
-            <label class="checkbox-label">
-              <input
-                type="checkbox"
-                bind:checked={includeComparison}
-                disabled={isGenerating}
-              />
-              <span>Include full comparative benchmarking of all six search algorithms</span>
-            </label>
-          </div>
-
-          <!-- Assets Table Editor -->
-          <div class="editor-section">
-            <div class="editor-header">
-              <div>
-                <h3 class="editor-title">Investment Asset Universe</h3>
-                <p class="editor-subtitle">Eligible asset classes for portfolio capital allocation</p>
-              </div>
-              <div style="display: flex; gap: 0.5rem;">
-                <button
-                  type="button"
-                  class="btn btn-secondary btn-xs"
-                  onclick={saveStarterPortfolioToDatabase}
-                  disabled={isGenerating || isSavingStarter}
-                >
-                  {isSavingStarter ? 'Saving...' : 'Save Starter Portfolio to Database'}
-                </button>
-                <button
-                  type="button"
-                  class="btn btn-secondary btn-xs"
-                  onclick={addAsset}
-                  disabled={isGenerating}
-                >
-                  + Add Asset
-                </button>
-              </div>
-            </div>
-
-            <div class="table-container" style="margin-top: 0.75rem;">
-              <table class="table editor-table">
-                <thead>
-                  <tr>
-                    <th>Identifier</th>
-                    <th>Name</th>
-                    <th>Type</th>
-                    <th>Exp. Return</th>
-                    <th>Risk (0-1)</th>
-                    <th>Liquidity (0-1)</th>
-                    <th>Cost</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {#each assets as asset, idx (idx)}
-                    <tr>
-                      <td>
-                        <input
-                          type="text"
-                          class="form-input editor-input"
-                          bind:value={asset.id}
-                          disabled={isGenerating}
-                          placeholder="id"
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="text"
-                          class="form-input editor-input"
-                          bind:value={asset.name}
-                          disabled={isGenerating}
-                          placeholder="name"
-                        />
-                      </td>
-                      <td>
-                        <select
-                          class="form-input editor-input"
-                          bind:value={asset.asset_type}
-                          disabled={isGenerating}
-                        >
-                          {#each CANONICAL_ASSET_TYPES as opt}
-                            <option value={opt.value}>{opt.value}</option>
-                          {/each}
-                        </select>
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          class="form-input editor-input"
-                          bind:value={asset.expected_return}
-                          disabled={isGenerating}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          max="1"
-                          class="form-input editor-input"
-                          bind:value={asset.risk}
-                          disabled={isGenerating}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          max="1"
-                          class="form-input editor-input"
-                          bind:value={asset.liquidity}
-                          disabled={isGenerating}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          step="0.001"
-                          min="0"
-                          class="form-input editor-input"
-                          bind:value={asset.cost}
-                          disabled={isGenerating}
-                        />
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          class="btn btn-danger btn-xs"
-                          onclick={() => removeAsset(idx)}
-                          disabled={isGenerating || assets.length <= 1}
-                        >
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- Liabilities Table Editor -->
-          <div class="editor-section" style="margin-top: 1.5rem;">
-            <div class="editor-header">
-              <div>
-                <h3 class="editor-title">Liabilities & Debt Obligations</h3>
-                <p class="editor-subtitle">Outstanding maturities requiring liquidity provision</p>
-              </div>
-              <div style="display: flex; gap: 0.5rem;">
-                <button
-                  type="button"
-                  class="btn btn-secondary btn-xs"
-                  onclick={handleLoadAndPersistSampleLiabilities}
-                  disabled={isGenerating || isLoadingLiabilities}
-                >
-                  Reset to Sample Debt
-                </button>
-                <button
-                  type="button"
-                  class="btn btn-secondary btn-xs"
-                  onclick={addLiability}
-                  disabled={isGenerating}
-                >
-                  + Add Liability
-                </button>
-              </div>
-            </div>
-
-            <div class="table-container" style="margin-top: 0.75rem;">
-              <table class="table editor-table">
-                <thead>
-                  <tr>
-                    <th>Identifier</th>
-                    <th>Name</th>
-                    <th>Principal</th>
-                    <th>Interest Rate</th>
-                    <th>Priority</th>
-                    <th>Mandatory Reserve</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {#each liabilities as liab, idx (idx)}
-                    <tr>
-                      <td>
-                        <input
-                          type="text"
-                          class="form-input editor-input"
-                          bind:value={liab.id}
-                          disabled={isGenerating}
-                          placeholder="id"
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="text"
-                          class="form-input editor-input"
-                          bind:value={liab.name}
-                          disabled={isGenerating}
-                          placeholder="name"
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          step="any"
-                          min="0"
-                          class="form-input editor-input"
-                          bind:value={liab.principal}
-                          disabled={isGenerating}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          step="0.005"
-                          min="0"
-                          class="form-input editor-input"
-                          bind:value={liab.interest_rate}
-                          disabled={isGenerating}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          min="1"
-                          class="form-input editor-input"
-                          bind:value={liab.priority}
-                          disabled={isGenerating}
-                        />
-                      </td>
-                      <td style="text-align: center;">
-                        <input
-                          type="checkbox"
-                          bind:checked={liab.is_mandatory_reserve}
-                          disabled={isGenerating}
-                        />
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          class="btn btn-danger btn-xs"
-                          onclick={() => removeLiability(idx)}
-                          disabled={isGenerating}
-                        >
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div style="margin-top: 1.5rem; display: flex; gap: 0.75rem; align-items: center;">
-            <button type="submit" class="btn btn-primary" disabled={isGenerating}>
-              {isGenerating ? 'Synthesizing Strategy...' : 'Execute Allocation Orchestration'}
-            </button>
-            <button
-              type="button"
-              class="btn btn-secondary"
-              disabled={isGenerating}
-              onclick={() => (showGenerator = false)}
-            >
-              Cancel
-            </button>
-          </div>
-
-          {#if isGenerating}
-            <p class="state-message" style="margin-top: 0.75rem;">
-              Executing AI search and synthesizing allocation strategy... This may take several seconds.
-            </p>
           {/if}
-        </form>
-      </div>
-    {/if}
 
-    <!-- Result View of Latest Generated Strategy -->
-    {#if latestResult}
-      <div class="card strategy-result-card">
-        <div class="section-header">
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.5rem;">
-            <div>
-              <span class="badge badge-pass" style="margin-bottom: 0.35rem;">Orchestration Completed</span>
-              <h2 class="section-title">Synthesized Allocation Strategy</h2>
-              <p class="section-subtitle">Run ID: {latestResult.run_id}</p>
+          {#if fieldValidationErrors.length > 0}
+            <div class="alert alert-danger">
+              <strong>Fix input errors:</strong>
+              <ul class="err-list">
+                {#each fieldValidationErrors as err}<li>{err}</li>{/each}
+              </ul>
             </div>
-            <div>
-              <span class="algo-badge" style="font-size: 0.8125rem;">
-                Algorithm: {latestResult.ai.algorithm_used}
-              </span>
+          {/if}
+
+          <form onsubmit={handleGenerateStrategy} novalidate class="stack-gap">
+            <div class="settings-grid">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label for="algorithmSelect" class="form-label">Search algorithm</label>
+                <select id="algorithmSelect" class="form-input" bind:value={selectedAlgorithm} disabled={isGenerating}>
+                  {#each algorithmOptions as opt}
+                    <option value={opt.value}>{opt.label}</option>
+                  {/each}
+                </select>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 0;">
+                <label for="stepSizeInput" class="form-label">Step size (optional)</label>
+                <input
+                  id="stepSizeInput"
+                  type="number"
+                  step="any"
+                  min="0.01"
+                  class="form-input font-mono"
+                  placeholder={treasury ? `Auto (${(treasury.total_capital / 20).toFixed(2)})` : 'Auto'}
+                  bind:value={stepSize}
+                  disabled={isGenerating}
+                />
+                {#if treasury}
+                  <span class="field-hint">Min {(treasury.total_capital / 200).toFixed(2)} to keep steps &le; 200.</span>
+                {/if}
+              </div>
+
+              <div class="form-group" style="margin-bottom: 0;">
+                <label for="minLiqInput" class="form-label">Liquidity floor (0.00–1.00)</label>
+                <input id="minLiqInput" type="number" step="0.05" min="0" max="1" class="form-input font-mono" bind:value={minLiquidity} disabled={isGenerating} />
+              </div>
             </div>
-          </div>
+
+            <label class="checkbox-label">
+              <input type="checkbox" bind:checked={includeComparison} disabled={isGenerating} />
+              <span>Benchmark all 6 search algorithms side by side</span>
+            </label>
+
+            <div class="editor-block">
+              <div class="block-head" style="margin-bottom: 0.5rem;">
+                <h3>Assets ({assets.length})</h3>
+                <div class="btn-row">
+                  <button type="button" class="btn btn-secondary btn-xs" onclick={saveStarterPortfolioToDatabase} disabled={isGenerating || isSavingStarter}>
+                    {isSavingStarter ? 'Saving...' : 'Save starter portfolio'}
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-xs" onclick={addAsset} disabled={isGenerating}>Add row</button>
+                </div>
+              </div>
+              <div class="table-container">
+                <table class="table editor-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Name</th>
+                      <th>Type</th>
+                      <th>Exp. Return</th>
+                      <th>Risk</th>
+                      <th>Liquidity</th>
+                      <th>Cost</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {#each assets as asset, idx (idx)}
+                      <tr>
+                        <td><input type="text" class="form-input editor-input font-mono" bind:value={asset.id} disabled={isGenerating} /></td>
+                        <td><input type="text" class="form-input editor-input" bind:value={asset.name} disabled={isGenerating} /></td>
+                        <td>
+                          <select class="form-input editor-input" bind:value={asset.asset_type} disabled={isGenerating}>
+                            {#each CANONICAL_ASSET_TYPES as opt}<option value={opt.value}>{opt.value}</option>{/each}
+                          </select>
+                        </td>
+                        <td><input type="number" step="0.01" min="0" class="form-input editor-input font-mono" bind:value={asset.expected_return} disabled={isGenerating} /></td>
+                        <td><input type="number" step="0.01" min="0" max="1" class="form-input editor-input font-mono" bind:value={asset.risk} disabled={isGenerating} /></td>
+                        <td><input type="number" step="0.01" min="0" max="1" class="form-input editor-input font-mono" bind:value={asset.liquidity} disabled={isGenerating} /></td>
+                        <td><input type="number" step="0.001" min="0" class="form-input editor-input font-mono" bind:value={asset.cost} disabled={isGenerating} /></td>
+                        <td>
+                          <button type="button" class="btn btn-danger btn-xs" onclick={() => removeAsset(idx)} disabled={isGenerating || assets.length <= 1}>Remove</button>
+                        </td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="editor-block">
+              <div class="block-head" style="margin-bottom: 0.5rem;">
+                <h3>Liabilities ({liabilities.length})</h3>
+                <div class="btn-row">
+                  <button type="button" class="btn btn-secondary btn-xs" onclick={handleLoadAndPersistSampleLiabilities} disabled={isGenerating || isLoadingLiabilities}>Reset sample debt</button>
+                  <button type="button" class="btn btn-secondary btn-xs" onclick={addLiability} disabled={isGenerating}>Add row</button>
+                </div>
+              </div>
+              <div class="table-container">
+                <table class="table editor-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Name</th>
+                      <th>Principal</th>
+                      <th>Rate</th>
+                      <th>Priority</th>
+                      <th>Mandatory</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {#each liabilities as liab, idx (idx)}
+                      <tr>
+                        <td><input type="text" class="form-input editor-input font-mono" bind:value={liab.id} disabled={isGenerating} /></td>
+                        <td><input type="text" class="form-input editor-input" bind:value={liab.name} disabled={isGenerating} /></td>
+                        <td><input type="number" step="any" min="0" class="form-input editor-input font-mono" bind:value={liab.principal} disabled={isGenerating} /></td>
+                        <td><input type="number" step="0.005" min="0" class="form-input editor-input font-mono" bind:value={liab.interest_rate} disabled={isGenerating} /></td>
+                        <td><input type="number" min="1" class="form-input editor-input font-mono" bind:value={liab.priority} disabled={isGenerating} /></td>
+                        <td class="text-center"><input type="checkbox" bind:checked={liab.is_mandatory_reserve} disabled={isGenerating} /></td>
+                        <td><button type="button" class="btn btn-danger btn-xs" onclick={() => removeLiability(idx)} disabled={isGenerating}>Remove</button></td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="btn-row">
+              <button type="submit" class="btn btn-primary btn-sm" disabled={isGenerating}>
+                {isGenerating ? 'Executing orchestration...' : 'Execute allocation'}
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" disabled={isGenerating} onclick={() => (showGenerator = false)}>Cancel</button>
+            </div>
+          </form>
         </div>
+      {/if}
 
-        <!-- Strategy Metrics Summary -->
-        <div class="detail-grid" style="margin-top: 1.25rem;">
-          <div class="detail-item">
-            <span class="detail-label">Objective Value</span>
-            <span class="detail-value">{formatNumber(latestResult.ai.objective_value)}</span>
+      {#if latestResult}
+        <section class="section-block" aria-label="Latest synthesized strategy">
+          <div class="block-head">
+            <div>
+              <h2>Latest Strategy ({latestResult.ai.algorithm_used})</h2>
+              <p class="block-sub font-mono">Run {latestResult.run_id}</p>
+            </div>
+            <span class="pos-val">Completed</span>
           </div>
 
-          <div class="detail-item">
-            <span class="detail-label">Expected Return</span>
-            <span class="detail-value">{formatPercent(latestResult.ai.expected_return)}</span>
+          <div class="summary-strip cols-5">
+            <div class="summary-cell"><span class="summary-label">Objective</span><span class="summary-value">{formatNumber(latestResult.ai.objective_value)}</span></div>
+            <div class="summary-cell"><span class="summary-label">Expected Return</span><span class="summary-value pos-val">{formatPercent(latestResult.ai.expected_return)}</span></div>
+            <div class="summary-cell"><span class="summary-label">Risk Score</span><span class="summary-value">{formatNumber(latestResult.ai.risk_score)}</span></div>
+            <div class="summary-cell"><span class="summary-label">Liquidity</span><span class="summary-value">{formatPercent(latestResult.ai.liquidity_ratio)}</span></div>
+            <div class="summary-cell"><span class="summary-label">Runtime</span><span class="summary-value">{latestResult.ai.execution_time_ms.toFixed(1)} ms</span></div>
           </div>
 
-          <div class="detail-item">
-            <span class="detail-label">Portfolio Risk Score</span>
-            <span class="detail-value">{formatNumber(latestResult.ai.risk_score)}</span>
-          </div>
-
-          <div class="detail-item">
-            <span class="detail-label">Liquidity Ratio</span>
-            <span class="detail-value">{formatPercent(latestResult.ai.liquidity_ratio)}</span>
-          </div>
-
-          <div class="detail-item">
-            <span class="detail-label">Execution Time</span>
-            <span class="detail-value">{latestResult.ai.execution_time_ms.toFixed(1)} ms</span>
-          </div>
-        </div>
-
-        <!-- AI Natural Language Explanation -->
-        {#if latestResult.ai.explanation}
-          <div class="explanation-box" style="margin-top: 1.25rem;">
-            <span class="detail-label">AI Decision Explanation</span>
-            <p class="explanation-text">{latestResult.ai.explanation}</p>
-          </div>
-        {/if}
-
-        <!-- Allocations Horizontal Bar Chart -->
-        <div style="margin-top: 1.75rem;">
-          <h3 class="section-title" style="font-size: 1.0625rem;">Capital Allocation Breakdown</h3>
-          <p class="section-subtitle">Distribution of capital base across evaluated asset classes</p>
+          {#if latestResult.ai.explanation}
+            <div class="notice-banner">{latestResult.ai.explanation}</div>
+          {/if}
 
           <div class="chart-container">
+            <h3 style="margin-bottom: 0.75rem;">Capital Allocation Breakdown</h3>
             {#each parseAllocations(latestResult.ai.allocations_json) as item}
               {@const pct = totalAllocationAmount > 0 ? (item.amount / totalAllocationAmount) * 100 : 0}
               <div class="bar-row">
                 <span class="bar-label" title={item.asset}>{item.asset}</span>
-                <div class="bar-track">
-                  <div class="bar-fill" style="width: {Math.min(100, Math.max(2, pct))}%;"></div>
-                </div>
-                <span class="bar-value">{item.formattedAmount} ({pct.toFixed(1)}%)</span>
+                <div class="bar-track"><div class="bar-fill" style="width: {Math.min(100, Math.max(2, pct))}%;"></div></div>
+                <span class="bar-value font-mono">{item.formattedAmount} ({pct.toFixed(1)}%)</span>
               </div>
             {:else}
-              <p class="state-message">No discrete asset allocations returned.</p>
+              <p class="muted-cell">No discrete allocations returned.</p>
             {/each}
           </div>
-        </div>
 
-        <!-- Constraints Audit Table -->
-        <div style="margin-top: 1.75rem;">
-          <h3 class="section-title" style="font-size: 1.0625rem;">Constraints Compliance Audit</h3>
-          <p class="section-subtitle">Regulatory and policy constraint verification</p>
-
-          <div class="table-container" style="margin-top: 0.75rem;">
+          <div class="table-container">
             <table class="table">
               <thead>
                 <tr>
-                  <th>Constraint Type</th>
-                  <th>Required Floor</th>
-                  <th>Actual Achieved</th>
-                  <th>Compliance Status</th>
-                  <th>Audit Note</th>
+                  <th>Constraint</th>
+                  <th class="text-right">Required</th>
+                  <th class="text-right">Achieved</th>
+                  <th>Status</th>
+                  <th>Note</th>
                 </tr>
               </thead>
               <tbody>
                 {#each parseConstraintsAudit(latestResult.ai.constraints_audit_json) as audit}
                   <tr>
-                    <td><code>{audit.constraint_type}</code></td>
-                    <td class="numeric-cell">{formatNumber(audit.required)}</td>
-                    <td class="numeric-cell">{formatNumber(audit.actual)}</td>
-                    <td>
-                      {#if audit.satisfied}
-                        <span class="badge badge-pass">Pass</span>
-                      {:else}
-                        <span class="badge badge-fail">Fail</span>
-                      {/if}
-                    </td>
-                    <td>{audit.message || '-'}</td>
+                    <td class="font-mono">{audit.constraint_type}</td>
+                    <td class="text-right numeric-cell">{formatNumber(audit.required)}</td>
+                    <td class="text-right numeric-cell">{formatNumber(audit.actual)}</td>
+                    <td class={audit.satisfied ? 'pos-val' : 'neg-val'}>{audit.satisfied ? 'Pass' : 'Fail'}</td>
+                    <td class="muted-cell">{audit.message || '—'}</td>
                   </tr>
                 {:else}
+                  <tr><td colspan="5" class="text-center muted-cell">No constraints logged.</td></tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+
+          {#if latestResult.comparison?.results}
+            <div class="table-container">
+              <table class="table">
+                <thead>
                   <tr>
-                    <td colspan="5" style="text-align: center; color: var(--color-text-muted);">
-                      No constraint audit items logged.
+                    <th>Algorithm</th>
+                    <th class="text-right">Objective</th>
+                    <th class="text-right">Exp. Return</th>
+                    <th class="text-right">Risk</th>
+                    <th class="text-right">Liquidity</th>
+                    <th class="text-right">States</th>
+                    <th class="text-right">Time</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each comparisonResultsList as [algoKey, compResult]}
+                    {@const isBest = algoKey === bestComparisonAlgo}
+                    <tr class:highlight-row={isBest}>
+                      <td class="font-mono font-bold">{algoKey}{isBest ? ' (best)' : ''}</td>
+                      <td class="text-right numeric-cell">{formatNumber(compResult.objective_value)}</td>
+                      <td class="text-right numeric-cell">{formatPercent(compResult.expected_return)}</td>
+                      <td class="text-right numeric-cell">{formatNumber(compResult.risk_score)}</td>
+                      <td class="text-right numeric-cell">{formatPercent(compResult.liquidity_ratio)}</td>
+                      <td class="text-right numeric-cell">{compResult.states_explored}</td>
+                      <td class="text-right numeric-cell">{compResult.execution_time_ms.toFixed(1)} ms</td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+
+            <div class="chart-container">
+              <h3 style="margin-bottom: 0.75rem;">Objective Value Comparison</h3>
+              {#each comparisonResultsList as [algoKey, compResult]}
+                {@const isBest = algoKey === bestComparisonAlgo}
+                {@const barWidth = bestComparisonObjective > 0 ? (compResult.objective_value / bestComparisonObjective) * 100 : 0}
+                <div class="bar-row">
+                  <span class="bar-label font-mono">{algoKey}</span>
+                  <div class="bar-track"><div class="bar-fill" class:bar-fill-highlight={isBest} style="width: {Math.min(100, Math.max(2, barWidth))}%;"></div></div>
+                  <span class="bar-value font-mono">{formatNumber(compResult.objective_value)}</span>
+                </div>
+              {/each}
+            </div>
+          {/if}
+
+          <div class="notice-banner">
+            <strong>Optimizer (:8001):</strong>
+            {#if latestResult.optimization.status === 'unavailable' || latestResult.optimization.status === 'not_available'}
+              Offline &mdash; {latestResult.optimization.reason}
+            {:else}
+              {latestResult.optimization.status} &mdash; {latestResult.optimization.reason}
+              {#if latestResult.optimization.best_classical_method}
+                &middot; Best classical: {latestResult.optimization.best_classical_method}
+              {/if}
+              {#if latestResult.optimization.qaoa_approximation_ratio != null}
+                &middot; QAOA ratio: {(latestResult.optimization.qaoa_approximation_ratio * 100).toFixed(1)}%
+              {/if}
+            {/if}
+          </div>
+        </section>
+      {/if}
+
+      <section class="section-block" aria-label="Saved execution strategies">
+        <div class="block-head">
+          <div>
+            <h2>Saved Strategies</h2>
+            <p class="block-sub">Historical algorithm outputs persisted for this treasury.</p>
+          </div>
+          {#if canWrite($user?.role)}
+            <button type="button" class="btn btn-primary btn-sm" onclick={() => (showGenerator = !showGenerator)}>
+              {showGenerator ? 'Close generator' : 'New strategy run'}
+            </button>
+          {/if}
+        </div>
+
+        {#if strategiesError}
+          <div class="alert alert-danger row-between">
+            <span>{strategiesError}</span>
+            <button type="button" class="btn btn-secondary btn-xs" onclick={() => fetchStrategies(strategyOffset)}>Retry</button>
+          </div>
+        {/if}
+
+        {#if isLoadingStrategies}
+          <div class="empty-box">Loading saved strategies...</div>
+        {:else if strategies.length === 0}
+          <div class="empty-box">
+            {strategyOffset > 0 ? 'No further strategy records on this page.' : 'No optimization runs recorded for this treasury yet.'}
+          </div>
+        {:else}
+          <div class="table-container">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Algorithm</th>
+                  <th class="text-right">Objective</th>
+                  <th class="text-right">Risk</th>
+                  <th class="text-right">Exp. Return</th>
+                  <th class="text-right">Liquidity</th>
+                  <th class="text-right">Time</th>
+                  <th>Allocations</th>
+                  <th class="text-right">Created</th>
+                  <th class="text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each strategies as s (s.id)}
+                  <tr>
+                    <td class="font-mono font-bold">{s.algorithm_used}</td>
+                    <td class="text-right numeric-cell">{formatNumber(s.objective_value)}</td>
+                    <td class="text-right numeric-cell">{formatNumber(s.risk_score)}</td>
+                    <td class="text-right numeric-cell">{formatPercent(s.expected_return)}</td>
+                    <td class="text-right numeric-cell">{formatPercent(s.liquidity_ratio)}</td>
+                    <td class="text-right numeric-cell">{s.execution_time_ms ? `${s.execution_time_ms.toFixed(1)} ms` : '—'}</td>
+                    <td class="allocations-cell">
+                      {#each parseAllocations(s.allocations_json) as item}
+                        <span class="alloc-line font-mono">{item.asset}: {item.formattedAmount}</span>
+                      {:else}
+                        <span class="muted-cell">—</span>
+                      {/each}
+                    </td>
+                    <td class="text-right muted-cell">{formatDate(s.created_at)}</td>
+                    <td class="text-right">
+                      <button
+                        type="button"
+                        class="btn btn-secondary btn-xs"
+                        onclick={() => {
+                          selectStrategyForAnalysis(s);
+                          activeTab = 'risk';
+                        }}
+                      >
+                        Analyze risk
+                      </button>
                     </td>
                   </tr>
                 {/each}
               </tbody>
             </table>
           </div>
-        </div>
 
-        <!-- Algorithm Comparison Benchmark (when included) -->
-        {#if latestResult.comparison?.results}
-          <div style="margin-top: 2rem;">
-            <h3 class="section-title" style="font-size: 1.0625rem;">Algorithmic Search Benchmark</h3>
-            <p class="section-subtitle">Side-by-side performance comparison across deterministic heuristics</p>
-
-            <div class="table-container" style="margin-top: 0.75rem;">
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th>Algorithm</th>
-                    <th>Objective Value</th>
-                    <th>Expected Return</th>
-                    <th>Risk Score</th>
-                    <th>Liquidity Ratio</th>
-                    <th>States Explored</th>
-                    <th>Execution Time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {#each comparisonResultsList as [algoKey, compResult]}
-                    {@const isBest = algoKey === bestComparisonAlgo}
-                    <tr class:row-highlight={isBest}>
-                      <td>
-                        <span class="algo-badge">{algoKey}</span>
-                        {#if isBest}
-                          <span class="badge badge-pass" style="margin-left: 0.5rem;">Best Objective</span>
-                        {/if}
-                      </td>
-                      <td class="numeric-cell">{formatNumber(compResult.objective_value)}</td>
-                      <td class="numeric-cell">{formatPercent(compResult.expected_return)}</td>
-                      <td class="numeric-cell">{formatNumber(compResult.risk_score)}</td>
-                      <td class="numeric-cell">{formatPercent(compResult.liquidity_ratio)}</td>
-                      <td class="numeric-cell">{compResult.states_explored}</td>
-                      <td class="numeric-cell">{compResult.execution_time_ms.toFixed(1)} ms</td>
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
-            </div>
-
-            <!-- Objective Value Comparative Bar Chart -->
-            <div style="margin-top: 1.25rem;">
-              <h4 class="editor-title" style="font-size: 0.875rem;">Objective Value Comparison Chart</h4>
-              <div class="chart-container">
-                {#each comparisonResultsList as [algoKey, compResult]}
-                  {@const isBest = algoKey === bestComparisonAlgo}
-                  {@const barWidth = bestComparisonObjective > 0 ? (compResult.objective_value / bestComparisonObjective) * 100 : 0}
-                  <div class="bar-row">
-                    <span class="bar-label" title={algoKey}>
-                      {algoKey}
-                      {#if isBest}
-                        <span class="badge badge-pass" style="font-size: 0.625rem; padding: 0.1rem 0.3rem;">Best</span>
-                      {/if}
-                    </span>
-                    <div class="bar-track">
-                      <div
-                        class="bar-fill"
-                        class:bar-fill-highlight={isBest}
-                        style="width: {Math.min(100, Math.max(2, barWidth))}%;"
-                      ></div>
-                    </div>
-                    <span class="bar-value">{formatNumber(compResult.objective_value)}</span>
-                  </div>
-                {/each}
-              </div>
+          <div class="pagination">
+            <span class="pagination-info">Showing {strategyOffset + 1} to {strategyOffset + strategies.length}</span>
+            <div class="pagination-actions">
+              <button type="button" class="btn btn-secondary btn-sm" disabled={strategyOffset === 0 || isLoadingStrategies} onclick={() => fetchStrategies(Math.max(0, strategyOffset - strategyLimit))}>Previous</button>
+              <button type="button" class="btn btn-secondary btn-sm" disabled={strategies.length < strategyLimit || isLoadingStrategies} onclick={() => fetchStrategies(strategyOffset + strategyLimit)}>Next</button>
             </div>
           </div>
         {/if}
-
-        <!-- Optimization Engine Status -->
-        <div class="optimization-status-box" style="margin-top: 1.75rem;">
-          <h4 class="editor-title" style="font-size: 0.875rem;">Optimization Engine Status</h4>
-          {#if latestResult.optimization.status === 'unavailable' || latestResult.optimization.status === 'not_available'}
-            <p class="state-message" style="margin-top: 0.25rem;">
-              Optimization Engine (Port 8001) is currently unavailable: {latestResult.optimization.reason}
-            </p>
-          {:else}
-            <p style="margin-top: 0.25rem; font-size: 0.875rem;">
-              Status: <strong>{latestResult.optimization.status}</strong> &mdash; {latestResult.optimization.reason}
-              {#if latestResult.optimization.best_classical_method}
-                | Best Classical: <strong>{latestResult.optimization.best_classical_method}</strong>
-              {/if}
-              {#if latestResult.optimization.qaoa_approximation_ratio != null}
-                | QAOA Approx Ratio: <strong>{(latestResult.optimization.qaoa_approximation_ratio * 100).toFixed(1)}%</strong>
-              {/if}
-            </p>
-          {/if}
-        </div>
-      </div>
-    {/if}
-
-    <!-- Historical Saved Strategies Section -->
-    <div class="strategies-section">
-      <div class="section-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
-        <div>
-          <h2 class="section-title">Saved Execution Strategies</h2>
-          <p class="section-subtitle">Historical audit trail of quantitative algorithm outputs and capital allocations</p>
-        </div>
-        {#if canWrite($user?.role)}
-          <button
-            type="button"
-            class="btn btn-primary btn-sm"
-            onclick={() => (showGenerator = !showGenerator)}
-          >
-            {showGenerator ? 'Close Strategy Generator' : '+ Generate Strategy'}
-          </button>
-        {/if}
-      </div>
-
-      {#if strategiesError}
-        <div class="alert alert-danger" style="display: flex; justify-content: space-between; align-items: center;">
-          <span>{strategiesError}</span>
-          <button type="button" class="btn btn-secondary btn-sm" onclick={() => fetchStrategies(strategyOffset)}>
-            Retry
-          </button>
-        </div>
-      {/if}
-
-      {#if isLoadingStrategies}
-        <div class="card empty-card">
-          <p class="state-message">Loading strategy execution logs...</p>
-        </div>
-      {:else if strategies.length === 0}
-        <div class="card empty-card">
-          <h3 class="state-title">No Strategies Recorded</h3>
-          <p class="state-message">
-            {#if strategyOffset > 0}
-              No additional strategy logs on this page.
-            {:else}
-              No optimization runs have been executed for this corporate balance sheet yet.
-            {/if}
-          </p>
-        </div>
-      {:else}
-        <div class="table-container">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Algorithm</th>
-                <th>Objective Value</th>
-                <th>Risk Score</th>
-                <th>Expected Return</th>
-                <th>Liquidity Ratio</th>
-                <th>Execution Time</th>
-                <th>Allocations Breakdown</th>
-                <th>Created Date</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each strategies as s (s.id)}
-                <tr>
-                  <td>
-                    <span class="algo-badge">{s.algorithm_used}</span>
-                  </td>
-                  <td class="numeric-cell">
-                    {formatNumber(s.objective_value)}
-                  </td>
-                  <td class="numeric-cell">
-                    {formatNumber(s.risk_score)}
-                  </td>
-                  <td class="numeric-cell">
-                    {formatPercent(s.expected_return)}
-                  </td>
-                  <td class="numeric-cell">
-                    {formatPercent(s.liquidity_ratio)}
-                  </td>
-                  <td class="numeric-cell">
-                    {s.execution_time_ms ? `${s.execution_time_ms.toFixed(1)} ms` : '-'}
-                  </td>
-                  <td>
-                    <div class="allocations-wrap">
-                      {#each parseAllocations(s.allocations_json) as item}
-                        <span class="tag-pill">
-                          <strong>{item.asset}:</strong> {item.formattedAmount}
-                        </span>
-                      {:else}
-                        <span style="color: var(--color-text-muted); font-size: 0.75rem;">None</span>
-                      {/each}
-                    </div>
-                  </td>
-                  <td>
-                    {formatDate(s.created_at)}
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      class="btn btn-secondary btn-xs"
-                      title="Load this historical allocation into AI Risk & Stress Testing"
-                      onclick={() => {
-                        selectStrategyForAnalysis(s);
-                        activeTab = 'risk';
-                      }}
-                    >
-                      Select for Risk/Stress
-                    </button>
-                  </td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
-
-        <div class="pagination">
-          <span class="pagination-info">
-            Showing records {strategyOffset + 1} to {strategyOffset + strategies.length}
-          </span>
-          <div class="pagination-actions">
-            <button
-              type="button"
-              class="btn btn-secondary btn-sm"
-              disabled={strategyOffset === 0 || isLoadingStrategies}
-              onclick={() => fetchStrategies(Math.max(0, strategyOffset - strategyLimit))}
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              class="btn btn-secondary btn-sm"
-              disabled={strategies.length < strategyLimit || isLoadingStrategies}
-              onclick={() => fetchStrategies(strategyOffset + strategyLimit)}
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      {/if}
-    </div>
+      </section>
     {/if}
 
     <!-- TAB 2: AI RISK ANALYSIS & MONTE CARLO VaR -->
     {#if activeTab === 'risk'}
-      <!-- Portfolio State Context Banner -->
-      <div class="portfolio-banner">
-        <div class="portfolio-banner-header">
-          <span class="detail-label">Evaluated Portfolio Target</span>
+      <div class="notice-banner row-between" style="flex-wrap: wrap;">
+        <div>
+          <strong>Target scope:</strong>
           {#if hasActiveAllocationStrategy}
-            <div style="display: flex; gap: 0.5rem; align-items: center;">
-              <span class="badge badge-pass">Strategy Allocations Active</span>
-              {#if selectedSavedStrategy}
-                <button type="button" class="btn btn-secondary btn-xs" onclick={clearSelectedStrategy}>
-                  Reset to Baseline
-                </button>
-              {/if}
-            </div>
+            Strategy <code class="font-mono">{activeStrategyAlgorithm}</code> ({activeStrategyRunId}) &mdash; {allocatedAssetCount} assets, {formatCurrency(totalAllocationAmount, treasury.base_currency)}.
           {:else}
-            <span class="badge badge-viewer">Baseline Balance Sheet</span>
+            Baseline cash position ({formatCurrency(treasury.total_capital, treasury.base_currency)}) against registered assets and mandatory debt reserves.
           {/if}
         </div>
-        {#if hasActiveAllocationStrategy}
-          <p class="portfolio-banner-text">
-            Analyzing portfolio strategy <strong>({activeStrategyAlgorithm})</strong> [Ref: <code>{activeStrategyRunId}</code>].
-            Evaluates {allocatedAssetCount} discrete allocation(s) totaling {formatCurrency(totalAllocationAmount, treasury.base_currency)}.
-          </p>
-        {:else}
-          <p class="portfolio-banner-text">
-            No synthesized allocation strategy is active. Risk analysis will evaluate the baseline balance-sheet cash position ({formatCurrency(treasury.total_capital, treasury.base_currency)}) against configured asset risk parameters and mandatory debt reserves.
-            To analyze optimized allocations, synthesize an allocation strategy in the Capital Allocation tab or select a saved strategy below.
-          </p>
+        {#if hasActiveAllocationStrategy && selectedSavedStrategy}
+          <button type="button" class="btn btn-secondary btn-xs" onclick={clearSelectedStrategy}>Use baseline</button>
         {/if}
       </div>
 
-      <!-- Risk Analysis Controls Card -->
-      <div class="card" style="margin-bottom: 2rem;">
-        <div class="section-header">
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.5rem;">
-            <div>
-              <h2 class="section-title">Bayesian Network Conditioning & Simulation Settings</h2>
-              <p class="section-subtitle">
-                Configure macroeconomic observation signals to update Bayesian risk posteriors, and define Monte Carlo simulation parameters.
-              </p>
-            </div>
-            <div>
-              <button
-                type="button"
-                class="btn btn-secondary btn-xs"
-                onclick={resetBayesianEvidence}
-                disabled={isAnalyzingRisk}
-              >
-                Reset Signals to Prior
-              </button>
-            </div>
+      <div class="surface-panel stack-gap">
+        <div class="block-head">
+          <div>
+            <h2>Bayesian Network &amp; Monte Carlo VaR</h2>
+            <p class="block-sub">Condition macro signals to compute posterior probabilities and tail loss bounds.</p>
           </div>
+          <button type="button" class="btn btn-secondary btn-xs" onclick={resetBayesianEvidence} disabled={isAnalyzingRisk}>Reset prior</button>
         </div>
 
         {#if riskError}
-          <div class="alert alert-danger" style="margin-top: 1rem;">
-            <p><strong>{riskError}</strong></p>
+          <div class="alert alert-danger">
+            <strong>{riskError}</strong>
             {#if riskDetails.length > 0}
-              <ul style="margin-top: 0.5rem; padding-left: 1.25rem;">
-                {#each riskDetails as d}
-                  <li>{d}</li>
-                {/each}
-              </ul>
+              <ul class="err-list">{#each riskDetails as d}<li>{d}</li>{/each}</ul>
             {/if}
           </div>
         {/if}
 
-        <div class="settings-grid" style="margin-top: 1.25rem;">
-          <div class="form-group">
-            <label for="inflationSignalSelect" class="form-label">Signal: High Inflation Environment</label>
-            <select
-              id="inflationSignalSelect"
-              class="form-input"
-              bind:value={signalInflation}
-              disabled={isAnalyzingRisk}
-            >
-              <option value="unobserved">Unobserved (Prior Default)</option>
-              <option value="true">Observed Active (True)</option>
-              <option value="false">Observed Inactive (False)</option>
+        <div class="settings-grid">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label for="inflationSignalSelect" class="form-label">High inflation</label>
+            <select id="inflationSignalSelect" class="form-input" bind:value={signalInflation} disabled={isAnalyzingRisk}>
+              <option value="unobserved">Unobserved (prior)</option>
+              <option value="true">Observed true</option>
+              <option value="false">Observed false</option>
             </select>
           </div>
-
-          <div class="form-group">
-            <label for="rateHikeSignalSelect" class="form-label">Signal: Central Bank Rate Hike</label>
-            <select
-              id="rateHikeSignalSelect"
-              class="form-input"
-              bind:value={signalRateHike}
-              disabled={isAnalyzingRisk}
-            >
-              <option value="unobserved">Unobserved (Prior Default)</option>
-              <option value="true">Observed Active (True)</option>
-              <option value="false">Observed Inactive (False)</option>
+          <div class="form-group" style="margin-bottom: 0;">
+            <label for="rateHikeSignalSelect" class="form-label">Central bank rate hike</label>
+            <select id="rateHikeSignalSelect" class="form-input" bind:value={signalRateHike} disabled={isAnalyzingRisk}>
+              <option value="unobserved">Unobserved (prior)</option>
+              <option value="true">Observed true</option>
+              <option value="false">Observed false</option>
             </select>
           </div>
-
-          <div class="form-group">
-            <label for="recessionSignalSelect" class="form-label">Signal: Yield Curve Recession Inversion</label>
-            <select
-              id="recessionSignalSelect"
-              class="form-input"
-              bind:value={signalRecession}
-              disabled={isAnalyzingRisk}
-            >
-              <option value="unobserved">Unobserved (Prior Default)</option>
-              <option value="true">Observed Active (True)</option>
-              <option value="false">Observed Inactive (False)</option>
+          <div class="form-group" style="margin-bottom: 0;">
+            <label for="recessionSignalSelect" class="form-label">Recession inversion</label>
+            <select id="recessionSignalSelect" class="form-input" bind:value={signalRecession} disabled={isAnalyzingRisk}>
+              <option value="unobserved">Unobserved (prior)</option>
+              <option value="true">Observed true</option>
+              <option value="false">Observed false</option>
             </select>
           </div>
         </div>
 
-        <div style="margin-top: 0.5rem; margin-bottom: 1.5rem; display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: center;">
-          <label class="checkbox-label">
-            <input
-              type="checkbox"
-              bind:checked={runMonteCarlo}
-              disabled={isAnalyzingRisk}
-            />
-            <span>Execute Monte Carlo return distribution simulation</span>
-          </label>
-
-          {#if runMonteCarlo}
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
-              <label for="mcScenariosInput" class="form-label" style="margin-bottom: 0;">Scenarios:</label>
-              <select
-                id="mcScenariosInput"
-                class="form-input"
-                style="width: 120px;"
-                bind:value={mcScenarios}
-                disabled={isAnalyzingRisk}
-              >
-                <option value="500">500</option>
-                <option value="1000">1,000</option>
-                <option value="2500">2,500</option>
-                <option value="5000">5,000</option>
+        <div class="btn-row" style="justify-content: space-between; flex-wrap: wrap;">
+          <div class="btn-row" style="gap: 1rem;">
+            <label class="checkbox-label">
+              <input type="checkbox" bind:checked={runMonteCarlo} disabled={isAnalyzingRisk} />
+              <span>Run Monte Carlo simulation</span>
+            </label>
+            {#if runMonteCarlo}
+              <select aria-label="Scenarios" class="form-select compact-select font-mono" bind:value={mcScenarios} disabled={isAnalyzingRisk}>
+                <option value="500">500 scenarios</option>
+                <option value="1000">1,000 scenarios</option>
+                <option value="2500">2,500 scenarios</option>
+                <option value="5000">5,000 scenarios</option>
               </select>
-            </div>
-          {/if}
-        </div>
+            {/if}
+          </div>
 
-        <div style="display: flex; gap: 0.75rem; align-items: center;">
-          <button
-            type="button"
-            class="btn btn-primary"
-            disabled={isAnalyzingRisk || !canWrite($user?.role)}
-            onclick={handleAnalyzeRisk}
-          >
-            {isAnalyzingRisk ? 'Executing Bayesian Risk Analysis...' : 'Run Bayesian Risk Analysis & VaR'}
+          <button type="button" class="btn btn-primary btn-sm" disabled={isAnalyzingRisk || !canWrite($user?.role)} onclick={handleAnalyzeRisk}>
+            {isAnalyzingRisk ? 'Running analysis...' : 'Run risk analysis & VaR'}
           </button>
         </div>
-
-        {#if isAnalyzingRisk}
-          <p class="state-message" style="margin-top: 0.75rem;">
-            Querying Bayesian network inference engine and executing Monte Carlo return simulations...
-          </p>
-        {/if}
       </div>
 
-      <!-- Risk Analysis Results View -->
       {#if riskResult}
-        <div class="card result-card" style="margin-bottom: 2rem;">
-          <div class="section-header">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.5rem;">
-              <div>
-                <span class="badge {getRiskTierClass(riskResult.risk_breakdown.risk_tier)}" style="margin-bottom: 0.35rem;">
-                  {riskResult.risk_breakdown.risk_tier} RISK TIER
-                </span>
-                <h2 class="section-title">Portfolio Risk Decomposition</h2>
-                <p class="section-subtitle">Granular explainability of risk scores and portfolio concentration</p>
-              </div>
-              <div class="composite-score-box">
-                <span class="detail-label">Composite Risk Score</span>
-                <span class="composite-score-value">{formatNumber(riskResult.risk_breakdown.composite_risk_score)}</span>
-              </div>
-            </div>
+        <section class="section-block" aria-label="Risk analysis output">
+          <div class="block-head">
+            <h2>Portfolio Risk Breakdown ({riskResult.risk_breakdown.risk_tier})</h2>
+            <span class="font-mono font-bold">Composite {formatNumber(riskResult.risk_breakdown.composite_risk_score)}</span>
           </div>
 
-          <div class="detail-grid" style="margin-top: 1.25rem;">
-            <div class="detail-item">
-              <span class="detail-label">Weighted Asset Risk</span>
-              <span class="detail-value">{formatNumber(riskResult.risk_breakdown.weighted_asset_risk)}</span>
-            </div>
-
-            <div class="detail-item">
-              <span class="detail-label">Concentration Index (HHI)</span>
-              <span class="detail-value">{formatNumber(riskResult.risk_breakdown.concentration_index_hhi)}</span>
-            </div>
-
-            <div class="detail-item">
-              <span class="detail-label">Concentration Penalty</span>
-              <span class="detail-value">{formatNumber(riskResult.risk_breakdown.concentration_penalty)}</span>
-            </div>
-
-            <div class="detail-item">
-              <span class="detail-label">Liquidity Deficit Penalty</span>
-              <span class="detail-value">{formatNumber(riskResult.risk_breakdown.liquidity_deficit_penalty)}</span>
-            </div>
-
-            <div class="detail-item">
-              <span class="detail-label">Leverage Penalty</span>
-              <span class="detail-value">{formatNumber(riskResult.risk_breakdown.leverage_penalty)}</span>
-            </div>
+          <div class="summary-strip cols-5">
+            <div class="summary-cell"><span class="summary-label">Asset Risk</span><span class="summary-value">{formatNumber(riskResult.risk_breakdown.weighted_asset_risk)}</span></div>
+            <div class="summary-cell"><span class="summary-label">HHI Index</span><span class="summary-value">{formatNumber(riskResult.risk_breakdown.concentration_index_hhi)}</span></div>
+            <div class="summary-cell"><span class="summary-label">Concentration Pen.</span><span class="summary-value">{formatNumber(riskResult.risk_breakdown.concentration_penalty)}</span></div>
+            <div class="summary-cell"><span class="summary-label">Liquidity Deficit</span><span class="summary-value">{formatNumber(riskResult.risk_breakdown.liquidity_deficit_penalty)}</span></div>
+            <div class="summary-cell"><span class="summary-label">Leverage Penalty</span><span class="summary-value">{formatNumber(riskResult.risk_breakdown.leverage_penalty)}</span></div>
           </div>
 
-          {#if riskResult.risk_breakdown.explanations && riskResult.risk_breakdown.explanations.length > 0}
-            <div style="margin-top: 1.5rem;">
-              <h3 class="editor-title" style="margin-bottom: 0.5rem;">Risk Factor Explanations</h3>
-              <ul class="explanations-list">
-                {#each riskResult.risk_breakdown.explanations as exp}
-                  <li>{exp}</li>
-                {/each}
-              </ul>
-            </div>
+          {#if riskResult.risk_breakdown.explanations?.length > 0}
+            <ul class="bullet-list">
+              {#each riskResult.risk_breakdown.explanations as exp}<li>{exp}</li>{/each}
+            </ul>
           {/if}
-        </div>
 
-        <!-- Bayesian Posterior Probabilities Card -->
-        <div class="card result-card" style="margin-bottom: 2rem;">
-          <div class="section-header">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.5rem;">
-              <div>
-                <h2 class="section-title">Bayesian Macroeconomic Posterior Probabilities</h2>
-                <p class="section-subtitle">Belief state inferred by conditional probability network</p>
-              </div>
-              <div>
-                <span class="algo-badge" style="font-size: 0.8125rem;">
-                  Stress Multiplier: {formatNumber(riskResult.bayesian_inference.stress_multiplier)}x
-                </span>
-              </div>
-            </div>
+          <div class="block-head" style="margin-top: 0.5rem;">
+            <h2>Bayesian Posterior Probabilities</h2>
+            <span class="font-mono muted-cell">Stress multiplier {formatNumber(riskResult.bayesian_inference.stress_multiplier)}x</span>
           </div>
 
-          <div class="detail-grid" style="margin-top: 1.25rem;">
-            <div class="detail-item">
-              <span class="detail-label">P(Recession)</span>
-              <span class="detail-value">{formatPercent(riskResult.bayesian_inference.p_recession)}</span>
-            </div>
-
-            <div class="detail-item">
-              <span class="detail-label">P(Liquidity Crisis)</span>
-              <span class="detail-value">{formatPercent(riskResult.bayesian_inference.p_liquidity_crisis)}</span>
-            </div>
-
-            <div class="detail-item">
-              <span class="detail-label">P(Equity Downturn)</span>
-              <span class="detail-value">{formatPercent(riskResult.bayesian_inference.p_equity_downturn)}</span>
-            </div>
-
-            <div class="detail-item">
-              <span class="detail-label">P(Credit Spread Widening)</span>
-              <span class="detail-value">{formatPercent(riskResult.bayesian_inference.p_credit_spread_widening)}</span>
-            </div>
+          <div class="summary-strip">
+            <div class="summary-cell"><span class="summary-label">P(Recession)</span><span class="summary-value">{formatPercent(riskResult.bayesian_inference.p_recession)}</span></div>
+            <div class="summary-cell"><span class="summary-label">P(Liquidity Crisis)</span><span class="summary-value">{formatPercent(riskResult.bayesian_inference.p_liquidity_crisis)}</span></div>
+            <div class="summary-cell"><span class="summary-label">P(Equity Downturn)</span><span class="summary-value">{formatPercent(riskResult.bayesian_inference.p_equity_downturn)}</span></div>
+            <div class="summary-cell"><span class="summary-label">P(Spread Widening)</span><span class="summary-value">{formatPercent(riskResult.bayesian_inference.p_credit_spread_widening)}</span></div>
           </div>
 
           {#if riskResult.bayesian_inference.explanation}
-            <div class="explanation-box" style="margin-top: 1.25rem;">
-              <span class="detail-label">Bayesian Network Rationale</span>
-              <p class="explanation-text">{riskResult.bayesian_inference.explanation}</p>
+            <div class="notice-banner">{riskResult.bayesian_inference.explanation}</div>
+          {/if}
+
+          {#if riskResult.monte_carlo_report}
+            <div class="block-head" style="margin-top: 0.5rem;">
+              <h2>Monte Carlo Return Distribution</h2>
+              <span class="font-mono muted-cell">{formatNumber(riskResult.monte_carlo_report.num_scenarios)} scenarios</span>
+            </div>
+            <div class="summary-strip">
+              <div class="summary-cell"><span class="summary-label">Mean Return</span><span class="summary-value">{formatPercent(riskResult.monte_carlo_report.mean_simulated_return)}</span></div>
+              <div class="summary-cell"><span class="summary-label">Std Dev</span><span class="summary-value">{formatPercent(riskResult.monte_carlo_report.std_simulated_return)}</span></div>
+              <div class="summary-cell"><span class="summary-label">95% VaR / CVaR</span><span class="summary-value">{formatPercent(riskResult.monte_carlo_report.var_95)} / {formatPercent(riskResult.monte_carlo_report.cvar_95)}</span></div>
+              <div class="summary-cell"><span class="summary-label">Worst-Case Loss</span><span class="summary-value neg-val">{formatPercent(riskResult.monte_carlo_report.worst_case_loss_pct)}</span></div>
             </div>
           {/if}
-        </div>
-
-        <!-- Monte Carlo VaR Simulation Card -->
-        {#if riskResult.monte_carlo_report}
-          <div class="card result-card" style="margin-bottom: 2rem;">
-            <div class="section-header">
-              <h2 class="section-title">Monte Carlo Return Simulation & Value at Risk (VaR)</h2>
-              <p class="section-subtitle">
-                Stochastic parametric simulation ({formatNumber(riskResult.monte_carlo_report.num_scenarios)} scenarios)
-              </p>
-            </div>
-
-            <div class="detail-grid" style="margin-top: 1.25rem;">
-              <div class="detail-item">
-                <span class="detail-label">Mean Simulated Return</span>
-                <span class="detail-value">{formatPercent(riskResult.monte_carlo_report.mean_simulated_return)}</span>
-              </div>
-
-              <div class="detail-item">
-                <span class="detail-label">Return Volatility (Std Dev)</span>
-                <span class="detail-value">{formatPercent(riskResult.monte_carlo_report.std_simulated_return)}</span>
-              </div>
-
-              <div class="detail-item">
-                <span class="detail-label">Value at Risk (95% VaR)</span>
-                <span class="detail-value">{formatPercent(riskResult.monte_carlo_report.var_95)}</span>
-              </div>
-
-              <div class="detail-item">
-                <span class="detail-label">Conditional VaR (95% CVaR)</span>
-                <span class="detail-value">{formatPercent(riskResult.monte_carlo_report.cvar_95)}</span>
-              </div>
-
-              <div class="detail-item">
-                <span class="detail-label">Value at Risk (99% VaR)</span>
-                <span class="detail-value">{formatPercent(riskResult.monte_carlo_report.var_99)}</span>
-              </div>
-
-              <div class="detail-item">
-                <span class="detail-label">Conditional VaR (99% CVaR)</span>
-                <span class="detail-value">{formatPercent(riskResult.monte_carlo_report.cvar_99)}</span>
-              </div>
-
-              <div class="detail-item">
-                <span class="detail-label">Worst-Case Simulated Loss</span>
-                <span class="detail-value" style="color: var(--color-danger);">{formatPercent(riskResult.monte_carlo_report.worst_case_loss_pct)}</span>
-              </div>
-
-              <div class="detail-item">
-                <span class="detail-label">Probability of Loss</span>
-                <span class="detail-value">{formatPercent(riskResult.monte_carlo_report.probability_of_loss)}</span>
-              </div>
-            </div>
-          </div>
-        {/if}
+        </section>
       {/if}
     {/if}
 
     <!-- TAB 3: ADVERSARIAL STRESS TESTING -->
     {#if activeTab === 'stress'}
-      <!-- Portfolio State Context Banner -->
-      <div class="portfolio-banner">
-        <div class="portfolio-banner-header">
-          <span class="detail-label">Evaluated Portfolio Target</span>
-          {#if hasActiveAllocationStrategy}
-            <div style="display: flex; gap: 0.5rem; align-items: center;">
-              <span class="badge badge-pass">Strategy Allocations Active</span>
-              {#if selectedSavedStrategy}
-                <button type="button" class="btn btn-secondary btn-xs" onclick={clearSelectedStrategy}>
-                  Reset to Baseline
-                </button>
-              {/if}
-            </div>
-          {:else}
-            <span class="badge badge-viewer">Baseline Balance Sheet</span>
-          {/if}
-        </div>
-        {#if hasActiveAllocationStrategy}
-          <p class="portfolio-banner-text">
-            Stress testing portfolio strategy <strong>({activeStrategyAlgorithm})</strong> [Ref: <code>{activeStrategyRunId}</code>].
-            Evaluates {allocatedAssetCount} discrete allocation(s) totaling {formatCurrency(totalAllocationAmount, treasury.base_currency)}.
-          </p>
-        {:else}
-          <p class="portfolio-banner-text">
-            No synthesized allocation strategy is active. Stress testing will evaluate the baseline balance-sheet cash position ({formatCurrency(treasury.total_capital, treasury.base_currency)}) against macroeconomic shocks and mandatory debt obligations.
-            To stress test optimized allocations, synthesize an allocation strategy in the Capital Allocation tab or select a saved strategy below.
-          </p>
-        {/if}
-      </div>
-
-      <!-- Stress Test Controls Card -->
-      <div class="card" style="margin-bottom: 2rem;">
-        <div class="section-header">
-          <h2 class="section-title">Minimax Adversarial Game Tree Search</h2>
-          <p class="section-subtitle">
-            Simulate two-player zero-sum adversarial game with Alpha-Beta pruning: Treasury portfolio manager vs. hostile market adversary.
-          </p>
+      <div class="surface-panel stack-gap">
+        <div class="block-head">
+          <div>
+            <h2>Minimax Adversarial Game Tree Search</h2>
+            <p class="block-sub">Zero-sum Alpha-Beta search pitting treasury policy against adverse macro shocks.</p>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" disabled={isStressTesting || !canWrite($user?.role)} onclick={handleStressTest}>
+            {isStressTesting ? 'Running minimax...' : 'Run stress test'}
+          </button>
         </div>
 
         {#if stressError}
-          <div class="alert alert-danger" style="margin-top: 1rem;">
-            <p><strong>{stressError}</strong></p>
+          <div class="alert alert-danger">
+            <strong>{stressError}</strong>
             {#if stressDetails.length > 0}
-              <ul style="margin-top: 0.5rem; padding-left: 1.25rem;">
-                {#each stressDetails as d}
-                  <li>{d}</li>
-                {/each}
-              </ul>
+              <ul class="err-list">{#each stressDetails as d}<li>{d}</li>{/each}</ul>
             {/if}
           </div>
         {/if}
-
-        <div style="margin-top: 1.25rem; display: flex; gap: 0.75rem; align-items: center;">
-          <button
-            type="button"
-            class="btn btn-primary"
-            disabled={isStressTesting || !canWrite($user?.role)}
-            onclick={handleStressTest}
-          >
-            {isStressTesting ? 'Executing Minimax Adversarial Search...' : 'Run Adversarial Stress Test'}
-          </button>
-        </div>
-
-        {#if isStressTesting}
-          <p class="state-message" style="margin-top: 0.75rem;">
-            Searching adversarial game tree with Alpha-Beta branch pruning and calculating discrete shock evaluations...
-          </p>
-        {/if}
       </div>
 
-      <!-- Stress Test Results View -->
       {#if stressResult}
-        <!-- Adversarial Search Result Card -->
-        <div class="card result-card" style="margin-bottom: 2rem;">
-          <div class="section-header">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.5rem;">
-              <div>
-                <span class="badge badge-analyst" style="margin-bottom: 0.35rem;">Alpha-Beta Minimax Completed</span>
-                <h2 class="section-title">Adversarial Search Outcome</h2>
-                <p class="section-subtitle">Worst-case macroeconomic response and optimal portfolio defensive posture</p>
-              </div>
-              <div class="composite-score-box">
-                <span class="detail-label">Worst-Case Payoff</span>
-                <span class="composite-score-value">{formatNumber(stressResult.adversarial_result.worst_case_payoff)}</span>
-              </div>
-            </div>
+        <section class="section-block" aria-label="Stress test results">
+          <div class="block-head">
+            <h2>Adversarial Outcome</h2>
+            <span class="font-mono font-bold">Worst payoff {formatNumber(stressResult.adversarial_result.worst_case_payoff)}</span>
           </div>
 
-          <div class="detail-grid" style="margin-top: 1.25rem;">
-            <div class="detail-item">
-              <span class="detail-label">Worst Market Shock</span>
-              <span class="detail-value">{stressResult.adversarial_result.worst_market_shock}</span>
-            </div>
-
-            <div class="detail-item">
-              <span class="detail-label">Recommended Defensive Action</span>
-              <span class="detail-value">{formatTreasuryAction(stressResult.adversarial_result.best_treasury_action)}</span>
-            </div>
-
-            <div class="detail-item">
-              <span class="detail-label">Game Tree Nodes Evaluated</span>
-              <span class="detail-value">{formatNumber(stressResult.adversarial_result.nodes_evaluated)}</span>
-            </div>
-
-            <div class="detail-item">
-              <span class="detail-label">Pruned Branches (Alpha-Beta)</span>
-              <span class="detail-value">{formatNumber(stressResult.adversarial_result.pruned_branches)}</span>
-            </div>
-
-            <div class="detail-item">
-              <span class="detail-label">Search Execution Time</span>
-              <span class="detail-value">{stressResult.adversarial_result.execution_time_ms.toFixed(1)} ms</span>
-            </div>
+          <div class="summary-strip cols-5">
+            <div class="summary-cell"><span class="summary-label">Worst Shock</span><span class="summary-value" style="font-size: 1rem;">{stressResult.adversarial_result.worst_market_shock}</span></div>
+            <div class="summary-cell"><span class="summary-label">Best Defense</span><span class="summary-value" style="font-size: 1rem;">{formatTreasuryAction(stressResult.adversarial_result.best_treasury_action)}</span></div>
+            <div class="summary-cell"><span class="summary-label">Nodes Evaluated</span><span class="summary-value">{formatNumber(stressResult.adversarial_result.nodes_evaluated)}</span></div>
+            <div class="summary-cell"><span class="summary-label">Pruned Branches</span><span class="summary-value">{formatNumber(stressResult.adversarial_result.pruned_branches)}</span></div>
+            <div class="summary-cell"><span class="summary-label">Execution Time</span><span class="summary-value">{stressResult.adversarial_result.execution_time_ms.toFixed(1)} ms</span></div>
           </div>
 
           {#if stressResult.adversarial_result.explanation}
-            <div class="explanation-box" style="margin-top: 1.25rem;">
-              <span class="detail-label">Adversarial Decision Rationale</span>
-              <p class="explanation-text">{stressResult.adversarial_result.explanation}</p>
-            </div>
+            <div class="notice-banner">{stressResult.adversarial_result.explanation}</div>
+          {/if}
+
+          <div class="table-container">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Crisis Scenario</th>
+                  <th class="text-right">Equity Shock</th>
+                  <th class="text-right">Spread Spike</th>
+                  <th class="text-right">Liquidity Freeze</th>
+                  <th class="text-right">Stressed Return</th>
+                  <th class="text-right">Stressed Liquidity</th>
+                  <th>Compliance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each stressResult.scenarios as item}
+                  <tr>
+                    <td>
+                      <div class="font-bold">{item.scenario.shock_name}</div>
+                      <div class="muted-cell" style="font-size: 0.75rem;">{item.scenario.description}</div>
+                    </td>
+                    <td class="text-right numeric-cell">{formatPercent(item.scenario.equity_drawdown)}</td>
+                    <td class="text-right numeric-cell">{formatPercent(item.scenario.credit_spread_spike)}</td>
+                    <td class="text-right numeric-cell">{formatPercent(item.scenario.liquidity_freeze)}</td>
+                    <td class="text-right numeric-cell {item.stressed_return < 0 ? 'neg-val' : ''}">{formatPercent(item.stressed_return)}</td>
+                    <td class="text-right numeric-cell">{formatPercent(item.stressed_liquidity)}</td>
+                    <td class={item.is_compliant ? 'pos-val' : 'neg-val'}>{item.is_compliant ? 'Compliant' : 'Breach'}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      {/if}
+    {/if}
+
+    <!-- TAB 4: MULTI-AGENT EXECUTIVE COUNCIL -->
+    {#if activeTab === 'council'}
+      <div class="surface-panel stack-gap">
+        <div class="block-head">
+          <div>
+            <h2>Executive Deliberation Council</h2>
+            <p class="block-sub">Evaluate allocation consensus across Treasury, Risk Officer, and Compliance roles.</p>
+          </div>
+          {#if councilResult}
+            <span class={councilResult.consensus_reached ? 'pos-val' : 'neg-val'}>
+              {councilResult.consensus_reached ? 'Consensus reached' : 'Objections raised'}
+            </span>
           {/if}
         </div>
 
-        <!-- 4 Macroeconomic Shock Scenarios Grid -->
-        <div style="margin-bottom: 2.5rem;">
-          <div class="section-header">
-            <h2 class="section-title">Macroeconomic Stress Scenarios & Statutory Compliance</h2>
-            <p class="section-subtitle">
-              Deterministic portfolio stress evaluation across the four standard macroeconomic crisis scenarios. Compliance indicates whether minimum liquidity constraints remain satisfied under shock.
-            </p>
+        {#if councilError}
+          <div class="alert alert-danger">
+            <strong>{councilError}</strong>
+            {#if councilDetails.length > 0}
+              <ul class="err-list">{#each councilDetails as detail}<li>{detail}</li>{/each}</ul>
+            {/if}
+          </div>
+        {/if}
+
+        <form onsubmit={(e) => { e.preventDefault(); handleEvaluateCouncil(); }} class="stack-gap">
+          <div class="settings-grid">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label for="council-objective" class="form-label">Objective</label>
+              <select id="council-objective" class="form-select" bind:value={councilObjective}>
+                <option value="maximize_risk_adjusted_return">Maximize risk-adjusted return</option>
+                <option value="minimize_risk">Minimize risk</option>
+                <option value="maximize_liquidity">Maximize liquidity buffer</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label for="council-market-state" class="form-label">Market regime</label>
+              <select id="council-market-state" class="form-select" bind:value={councilMarketState}>
+                <option value="normal">Normal</option>
+                <option value="bull">Bull expansion</option>
+                <option value="bear">Bear contraction</option>
+                <option value="high_volatility">High volatility</option>
+                <option value="liquidity_crunch">Liquidity crunch</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label for="council-step-size" class="form-label">Step size (optional)</label>
+              <input id="council-step-size" type="number" step="any" min="0.01" class="form-input font-mono" placeholder="Auto (capital / 20)" bind:value={councilStepSize} />
+            </div>
           </div>
 
-          <div class="scenarios-grid">
-            {#each stressResult.scenarios as item}
-              <div class="scenario-card" class:scenario-card-breach={!item.is_compliant}>
-                <div class="scenario-card-header">
+          <div class="btn-row" style="justify-content: flex-end;">
+            <button type="submit" class="btn btn-primary btn-sm" disabled={isEvaluatingCouncil || !canWrite($user?.role)}>
+              {isEvaluatingCouncil ? 'Convening council...' : 'Convene executive council'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {#if councilResult}
+        <section class="section-block" aria-label="Council verdicts and strategy">
+          <div class="notice-banner row-between">
+            <div>
+              <strong>{councilResult.consensus_reached ? 'Consensus reached:' : 'Consensus not reached:'}</strong>
+              {councilResult.consensus_reached
+                ? ' All three specialist evaluators verified liquidity, risk, and statutory mandates.'
+                : ' Specialist objections flagged violations requiring capital adjustment.'}
+            </div>
+            <span class="font-mono">{formatNumber(councilResult.search_metrics.execution_time_ms, 1)} ms</span>
+          </div>
+
+          <div class="council-grid">
+            {#each [
+              { label: 'Treasury', opinion: councilResult.treasury_opinion, metricLabel: 'Utility score', okLabel: 'Acceptable', noLabel: 'Unacceptable' },
+              { label: 'Risk Officer', opinion: councilResult.risk_opinion, metricLabel: 'Risk score', okLabel: 'Acceptable', noLabel: 'Unacceptable' },
+              { label: 'Compliance', opinion: councilResult.compliance_opinion, metricLabel: 'Compliance ratio', okLabel: 'Compliant', noLabel: 'Non-compliant' }
+            ] as agent}
+              <div class="surface-panel stack-gap">
+                <div class="block-head">
                   <div>
-                    <h3 class="scenario-title">{item.scenario.shock_name}</h3>
-                    <p class="scenario-desc">{item.scenario.description}</p>
+                    <span class="muted-cell" style="font-size: 0.75rem;">{agent.label}</span>
+                    <h3>{agent.opinion.agent_name}</h3>
                   </div>
-                  <div>
-                    {#if item.is_compliant}
-                      <span class="badge badge-pass">COMPLIANT</span>
-                    {:else}
-                      <span class="badge badge-fail">BREACH</span>
-                    {/if}
-                  </div>
+                  <span class={agent.opinion.is_acceptable ? 'pos-val' : 'neg-val'}>
+                    {agent.opinion.is_acceptable ? agent.okLabel : agent.noLabel}
+                  </span>
                 </div>
 
-                <div class="scenario-shocks-box">
-                  <span class="detail-label" style="font-size: 0.6875rem;">Macro Shock Parameters</span>
-                  <div class="scenario-shock-params">
-                    <span>Equity: <strong>{formatPercent(item.scenario.equity_drawdown)}</strong></span>
-                    <span>Spread: <strong>{formatPercent(item.scenario.credit_spread_spike)}</strong></span>
-                    <span>Liquidity: <strong>{formatPercent(item.scenario.liquidity_freeze)}</strong></span>
-                  </div>
+                <div class="row-between score-line">
+                  <span class="muted-cell">{agent.metricLabel}</span>
+                  <span class="font-mono font-bold">{formatNumber(agent.opinion.score, 3)}</span>
                 </div>
 
-                <div class="scenario-metrics-grid">
-                  <div class="scenario-metric">
-                    <span class="detail-label" style="font-size: 0.6875rem;">Stressed Return</span>
-                    <span class="scenario-metric-val" class:val-negative={item.stressed_return < 0}>
-                      {formatPercent(item.stressed_return)}
-                    </span>
-                  </div>
-
-                  <div class="scenario-metric">
-                    <span class="detail-label" style="font-size: 0.6875rem;">Stressed Liquidity</span>
-                    <span class="scenario-metric-val">
-                      {formatPercent(item.stressed_liquidity)}
-                    </span>
-                  </div>
-
-                  <div class="scenario-metric">
-                    <span class="detail-label" style="font-size: 0.6875rem;">Stressed Risk</span>
-                    <span class="scenario-metric-val">
-                      {formatNumber(item.stressed_risk)}
-                    </span>
-                  </div>
-
-                  <div class="scenario-metric">
-                    <span class="detail-label" style="font-size: 0.6875rem;">Estimated Payoff</span>
-                    <span class="scenario-metric-val">
-                      {formatNumber(item.estimated_payoff)}
-                    </span>
-                  </div>
-                </div>
+                {#if agent.opinion.findings?.length > 0}
+                  <ul class="bullet-list">
+                    {#each agent.opinion.findings as finding}<li>{finding}</li>{/each}
+                  </ul>
+                {:else}
+                  <p class="muted-cell" style="font-size: 0.8125rem;">No findings logged.</p>
+                {/if}
               </div>
             {/each}
           </div>
-        </div>
-      {/if}
-    {/if}
-  {/if}
 
-  <!-- TAB 4: MULTI-AGENT COUNCIL -->
-  {#if activeTab === 'council'}
-    <!-- Council Deliberation Configuration Card -->
-    <div class="card" style="margin-bottom: 2rem;">
-      <div class="section-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
-        <div>
-          <h2 class="section-title">Multi-Agent Executive Council</h2>
-          <p class="section-subtitle">
-            Tri-agent deliberative governance: Autonomous evaluation by Chief Treasury Agent, Chief Risk Officer Agent, and Regulatory Compliance Agent.
-          </p>
-        </div>
-        {#if councilResult}
-          <span class="badge {councilResult.consensus_reached ? 'badge-pass' : 'badge-breach'}">
-            {councilResult.consensus_reached ? 'Consensus Approved' : 'Consensus Disputed'}
-          </span>
-        {/if}
-      </div>
-
-      <!-- Portfolio Alignment Notice -->
-      <div class="portfolio-banner" style="margin-bottom: 1.5rem;">
-        <div class="portfolio-banner-header">
-          <span style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-primary);">
-            Institutional Deliberation Protocol
-          </span>
-          <span style="font-size: 0.75rem; color: var(--color-text-muted); font-family: monospace;">
-            Capital: {formatCurrency(totalCapital, treasury?.base_currency)} | Assets: {activeAssetCount} | Liabilities: {activeLiabilityCount}
-          </span>
-        </div>
-        <p class="portfolio-banner-text">
-          The Multi-Agent Council evaluates portfolio candidates against competing fiduciary objectives: Treasury seeks optimal risk-adjusted yield, CRO enforces tail-risk constraints and VaR limits, and Compliance enforces mandatory statutory reserve ratios.
-        </p>
-      </div>
-
-      {#if councilError}
-        <div class="alert alert-danger" style="margin-bottom: 1.5rem;">
-          <div style="font-weight: 600; margin-bottom: 0.25rem;">Council Deliberation Error</div>
-          <div>{councilError}</div>
-          {#if councilDetails.length > 0}
-            <ul style="margin: 0.5rem 0 0; padding-left: 1.25rem;">
-              {#each councilDetails as detail}
-                <li>{detail}</li>
-              {/each}
-            </ul>
-          {/if}
-        </div>
-      {/if}
-
-      <form onsubmit={(e) => { e.preventDefault(); handleEvaluateCouncil(); }}>
-        <div class="settings-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 1.25rem;">
-          <div class="form-group">
-            <label for="council-objective" class="form-label">Strategic Objective</label>
-            <select id="council-objective" class="form-select" bind:value={councilObjective}>
-              <option value="maximize_risk_adjusted_return">Maximize Risk-Adjusted Return</option>
-              <option value="minimize_risk">Minimize Risk (Preserve Capital)</option>
-              <option value="maximize_liquidity">Maximize Liquidity Buffer</option>
-            </select>
+          <div class="summary-strip cols-5">
+            <div class="summary-cell"><span class="summary-label">Allocated</span><span class="summary-value">{formatCurrency(councilResult.recommended_strategy.total_allocated, treasury?.base_currency)}</span></div>
+            <div class="summary-cell"><span class="summary-label">Exp. Return</span><span class="summary-value pos-val">{formatPercent(councilResult.recommended_strategy.expected_return)}</span></div>
+            <div class="summary-cell"><span class="summary-label">Risk Score</span><span class="summary-value">{formatNumber(councilResult.recommended_strategy.risk_score, 3)}</span></div>
+            <div class="summary-cell"><span class="summary-label">Liquidity</span><span class="summary-value">{formatPercent(councilResult.recommended_strategy.liquidity_ratio)}</span></div>
+            <div class="summary-cell"><span class="summary-label">Objective</span><span class="summary-value">{formatNumber(councilResult.recommended_strategy.objective_value, 4)}</span></div>
           </div>
 
-          <div class="form-group">
-            <label for="council-market-state" class="form-label">Simulated Market State</label>
-            <select id="council-market-state" class="form-select" bind:value={councilMarketState}>
-              <option value="normal">Normal Operating Environment</option>
-              <option value="bull">Bull Market Expansion</option>
-              <option value="bear">Bear Market Contraction</option>
-              <option value="high_volatility">High Volatility Regime</option>
-              <option value="liquidity_crunch">Liquidity Crunch / Credit Freeze</option>
-            </select>
-          </div>
+          <div class="notice-banner">{councilResult.recommended_strategy.explanation}</div>
 
-          <div class="form-group">
-            <label for="council-step-size" class="form-label">
-              Discretization Step Size
-              <span style="font-weight: 400; color: var(--color-text-muted); font-size: 0.75rem;">(optional)</span>
-            </label>
-            <input
-              id="council-step-size"
-              type="number"
-              step="any"
-              min="0.01"
-              class="form-input"
-              placeholder="Auto (Capital / 20)"
-              bind:value={councilStepSize}
-            />
-          </div>
-        </div>
-
-        <div style="display: flex; justify-content: flex-end; align-items: center; gap: 1rem; flex-wrap: wrap;">
-          {#if !canWrite($user?.role)}
-            <span style="font-size: 0.8125rem; color: var(--color-text-muted);">
-              Analyst or Admin permissions required to convene council.
-            </span>
-          {/if}
-          <button
-            type="submit"
-            class="btn btn-primary"
-            disabled={isEvaluatingCouncil || !canWrite($user?.role)}
-            style="min-width: 180px;"
-          >
-            {isEvaluatingCouncil ? 'Convening Council...' : 'Convene AI Council'}
-          </button>
-        </div>
-      </form>
-    </div>
-
-    <!-- Deliberation Results Section -->
-    {#if councilResult}
-      <!-- Consensus Status Banner -->
-      <div
-        class="card"
-        style="margin-bottom: 2rem; border-left: 4px solid {councilResult.consensus_reached ? 'var(--color-success)' : 'var(--color-danger)'};"
-      >
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
-          <div>
-            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
-              <span
-                class="badge {councilResult.consensus_reached ? 'badge-pass' : 'badge-breach'}"
-                style="font-size: 0.8125rem; padding: 0.3rem 0.65rem;"
-              >
-                {councilResult.consensus_reached ? 'STATUS: APPROVED' : 'STATUS: ACTION REQUIRED'}
-              </span>
-              <h3 style="font-size: 1.125rem; font-weight: 700; color: var(--color-text); margin: 0;">
-                {councilResult.consensus_reached
-                  ? 'Council Consensus Reached: Strategy Approved'
-                  : 'Council Consensus Not Reached: Specialist Objections Raised'}
-              </h3>
-            </div>
-            <p style="font-size: 0.875rem; color: var(--color-text-muted); margin: 0;">
-              {councilResult.consensus_reached
-                ? 'All 3 specialist agents have verified that the candidate allocation satisfies liquidity, risk, and statutory mandates.'
-                : 'Specialist agents identified fiduciary or compliance violations requiring strategy re-tuning or capital rebalancing.'}
-            </p>
-          </div>
-          <div style="text-align: right;">
-            <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600;">Execution Time</span>
-            <div style="font-size: 1.125rem; font-weight: 700; color: var(--color-text); font-variant-numeric: tabular-nums;">
-              {formatNumber(councilResult.search_metrics.execution_time_ms, 1)} ms
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Specialist Agent Assessment Cards (3 Columns) -->
-      <div style="margin-bottom: 2rem;">
-        <h3 class="section-title" style="margin-bottom: 0.5rem;">Specialist Agent Deliberation</h3>
-        <p class="section-subtitle" style="margin-bottom: 1.25rem;">
-          Individual verdicts, diagnostic health scores, and key findings recorded by the council members.
-        </p>
-
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.25rem;">
-          <!-- Agent 1: Chief Treasury Agent -->
-          <div class="card" style="display: flex; flex-direction: column; justify-content: space-between; border-top: 3px solid var(--color-primary);">
-            <div>
-              <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
-                <div>
-                  <span style="font-size: 0.6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted);">
-                    ROLE: TREASURY
-                  </span>
-                  <h4 style="font-size: 1rem; font-weight: 700; color: var(--color-text); margin: 0.15rem 0 0;">
-                    {councilResult.treasury_opinion.agent_name}
-                  </h4>
-                </div>
-                <span class="badge {councilResult.treasury_opinion.is_acceptable ? 'badge-pass' : 'badge-breach'}">
-                  {councilResult.treasury_opinion.is_acceptable ? 'Acceptable' : 'Unacceptable'}
-                </span>
-              </div>
-
-              <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 0.75rem; background-color: var(--color-bg); border-radius: var(--radius); margin-bottom: 1rem;">
-                <span style="font-size: 0.8125rem; color: var(--color-text-muted); font-weight: 600;">Utility Score</span>
-                <span style="font-size: 1.25rem; font-weight: 700; color: var(--color-text); font-variant-numeric: tabular-nums;">
-                  {formatNumber(councilResult.treasury_opinion.score, 3)}
-                </span>
-              </div>
-
-              <div>
-                <span style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted);">
-                  Key Findings
-                </span>
-                {#if councilResult.treasury_opinion.findings && councilResult.treasury_opinion.findings.length > 0}
-                  <ul style="margin: 0.5rem 0 0; padding-left: 1.25rem; font-size: 0.8125rem; color: var(--color-text); line-height: 1.5;">
-                    {#each councilResult.treasury_opinion.findings as finding}
-                      <li>{finding}</li>
-                    {/each}
-                  </ul>
-                {:else}
-                  <p style="font-size: 0.8125rem; color: var(--color-text-muted); margin-top: 0.35rem;">No explicit findings logged.</p>
-                {/if}
-              </div>
-            </div>
-
-            {#if councilResult.treasury_opinion.suggested_actions && councilResult.treasury_opinion.suggested_actions.length > 0}
-              <div style="margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--color-border);">
-                <span style="font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; color: var(--color-text-muted);">
-                  Suggested Action Proposals ({councilResult.treasury_opinion.suggested_actions.length})
-                </span>
-                <div style="display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.35rem;">
-                  {#each councilResult.treasury_opinion.suggested_actions as proposal}
-                    <div style="font-size: 0.75rem; background: var(--color-bg); padding: 0.35rem 0.5rem; border-radius: var(--radius);">
-                      <span style="font-weight: 600; text-transform: uppercase;">{proposal.action.action_type}</span>: {proposal.rationale}
-                    </div>
-                  {/each}
-                </div>
-              </div>
-            {/if}
-          </div>
-
-          <!-- Agent 2: Chief Risk Officer Agent -->
-          <div class="card" style="display: flex; flex-direction: column; justify-content: space-between; border-top: 3px solid var(--color-primary);">
-            <div>
-              <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
-                <div>
-                  <span style="font-size: 0.6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted);">
-                    ROLE: RISK
-                  </span>
-                  <h4 style="font-size: 1rem; font-weight: 700; color: var(--color-text); margin: 0.15rem 0 0;">
-                    {councilResult.risk_opinion.agent_name}
-                  </h4>
-                </div>
-                <span class="badge {councilResult.risk_opinion.is_acceptable ? 'badge-pass' : 'badge-breach'}">
-                  {councilResult.risk_opinion.is_acceptable ? 'Acceptable' : 'Unacceptable'}
-                </span>
-              </div>
-
-              <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 0.75rem; background-color: var(--color-bg); border-radius: var(--radius); margin-bottom: 1rem;">
-                <span style="font-size: 0.8125rem; color: var(--color-text-muted); font-weight: 600;">Risk Score</span>
-                <span style="font-size: 1.25rem; font-weight: 700; color: var(--color-text); font-variant-numeric: tabular-nums;">
-                  {formatNumber(councilResult.risk_opinion.score, 3)}
-                </span>
-              </div>
-
-              <div>
-                <span style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted);">
-                  Key Findings
-                </span>
-                {#if councilResult.risk_opinion.findings && councilResult.risk_opinion.findings.length > 0}
-                  <ul style="margin: 0.5rem 0 0; padding-left: 1.25rem; font-size: 0.8125rem; color: var(--color-text); line-height: 1.5;">
-                    {#each councilResult.risk_opinion.findings as finding}
-                      <li>{finding}</li>
-                    {/each}
-                  </ul>
-                {:else}
-                  <p style="font-size: 0.8125rem; color: var(--color-text-muted); margin-top: 0.35rem;">No explicit findings logged.</p>
-                {/if}
-              </div>
-            </div>
-
-            {#if councilResult.risk_opinion.suggested_actions && councilResult.risk_opinion.suggested_actions.length > 0}
-              <div style="margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--color-border);">
-                <span style="font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; color: var(--color-text-muted);">
-                  Suggested Action Proposals ({councilResult.risk_opinion.suggested_actions.length})
-                </span>
-                <div style="display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.35rem;">
-                  {#each councilResult.risk_opinion.suggested_actions as proposal}
-                    <div style="font-size: 0.75rem; background: var(--color-bg); padding: 0.35rem 0.5rem; border-radius: var(--radius);">
-                      <span style="font-weight: 600; text-transform: uppercase;">{proposal.action.action_type}</span>: {proposal.rationale}
-                    </div>
-                  {/each}
-                </div>
-              </div>
-            {/if}
-          </div>
-
-          <!-- Agent 3: Regulatory Compliance Agent -->
-          <div class="card" style="display: flex; flex-direction: column; justify-content: space-between; border-top: 3px solid var(--color-primary);">
-            <div>
-              <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
-                <div>
-                  <span style="font-size: 0.6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted);">
-                    ROLE: COMPLIANCE
-                  </span>
-                  <h4 style="font-size: 1rem; font-weight: 700; color: var(--color-text); margin: 0.15rem 0 0;">
-                    {councilResult.compliance_opinion.agent_name}
-                  </h4>
-                </div>
-                <span class="badge {councilResult.compliance_opinion.is_acceptable ? 'badge-pass' : 'badge-breach'}">
-                  {councilResult.compliance_opinion.is_acceptable ? 'Compliant' : 'Non-Compliant'}
-                </span>
-              </div>
-
-              <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 0.75rem; background-color: var(--color-bg); border-radius: var(--radius); margin-bottom: 1rem;">
-                <span style="font-size: 0.8125rem; color: var(--color-text-muted); font-weight: 600;">Compliance Ratio</span>
-                <span style="font-size: 1.25rem; font-weight: 700; color: var(--color-text); font-variant-numeric: tabular-nums;">
-                  {formatNumber(councilResult.compliance_opinion.score, 3)}
-                </span>
-              </div>
-
-              <div>
-                <span style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted);">
-                  Key Findings
-                </span>
-                {#if councilResult.compliance_opinion.findings && councilResult.compliance_opinion.findings.length > 0}
-                  <ul style="margin: 0.5rem 0 0; padding-left: 1.25rem; font-size: 0.8125rem; color: var(--color-text); line-height: 1.5;">
-                    {#each councilResult.compliance_opinion.findings as finding}
-                      <li>{finding}</li>
-                    {/each}
-                  </ul>
-                {:else}
-                  <p style="font-size: 0.8125rem; color: var(--color-text-muted); margin-top: 0.35rem;">No explicit findings logged.</p>
-                {/if}
-              </div>
-            </div>
-
-            {#if councilResult.compliance_opinion.suggested_actions && councilResult.compliance_opinion.suggested_actions.length > 0}
-              <div style="margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--color-border);">
-                <span style="font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; color: var(--color-text-muted);">
-                  Suggested Action Proposals ({councilResult.compliance_opinion.suggested_actions.length})
-                </span>
-                <div style="display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.35rem;">
-                  {#each councilResult.compliance_opinion.suggested_actions as proposal}
-                    <div style="font-size: 0.75rem; background: var(--color-bg); padding: 0.35rem 0.5rem; border-radius: var(--radius);">
-                      <span style="font-weight: 600; text-transform: uppercase;">{proposal.action.action_type}</span>: {proposal.rationale}
-                    </div>
-                  {/each}
-                </div>
-              </div>
-            {/if}
-          </div>
-        </div>
-      </div>
-
-      <!-- Synthesized Strategy Summary Card -->
-      <div class="card result-card" style="margin-bottom: 2rem;">
-        <div class="section-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
-          <div>
-            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
-              <h3 class="section-title">Synthesized Strategy Synthesis</h3>
-              <span class="badge {councilResult.recommended_strategy.is_compliant ? 'badge-pass' : 'badge-breach'}">
-                {councilResult.recommended_strategy.is_compliant ? 'Mandate Compliant' : 'Non-Compliant'}
-              </span>
-            </div>
-            <p class="section-subtitle">
-              Synthesized by Decision Agent balancing Treasury, Risk, and Compliance mandates.
-            </p>
-          </div>
-        </div>
-
-        <!-- Strategy Key Performance Indicators -->
-        <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin-bottom: 1.5rem;">
-          <div class="metric-card">
-            <span class="metric-label">Total Allocated</span>
-            <span class="metric-value">
-              {formatCurrency(councilResult.recommended_strategy.total_allocated, treasury?.base_currency)}
-            </span>
-          </div>
-
-          <div class="metric-card">
-            <span class="metric-label">Expected Return</span>
-            <span class="metric-value" style="color: var(--color-success);">
-              {formatPercent(councilResult.recommended_strategy.expected_return)}
-            </span>
-          </div>
-
-          <div class="metric-card">
-            <span class="metric-label">Portfolio Risk Score</span>
-            <span class="metric-value">
-              {formatNumber(councilResult.recommended_strategy.risk_score, 3)}
-            </span>
-          </div>
-
-          <div class="metric-card">
-            <span class="metric-label">Liquidity Ratio</span>
-            <span class="metric-value">
-              {formatPercent(councilResult.recommended_strategy.liquidity_ratio)}
-            </span>
-          </div>
-
-          <div class="metric-card">
-            <span class="metric-label">Objective Value</span>
-            <span class="metric-value">
-              {formatNumber(councilResult.recommended_strategy.objective_value, 4)}
-            </span>
-          </div>
-        </div>
-
-        <!-- Executive Strategy Explanation -->
-        <div class="explanation-box" style="margin-bottom: 1.5rem;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
-            <span class="detail-label" style="font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">
-              Council Deliberation Rationale
-            </span>
-          </div>
-          <p class="explanation-text">
-            {councilResult.recommended_strategy.explanation}
-          </p>
-        </div>
-
-        <!-- Operational Actions Table (if actions exist) -->
-        {#if councilResult.recommended_strategy.actions && councilResult.recommended_strategy.actions.length > 0}
-          <div style="margin-bottom: 1.5rem;">
-            <h4 style="font-size: 0.9375rem; font-weight: 700; color: var(--color-text); margin-bottom: 0.75rem;">
-              Recommended Financial Operations
-            </h4>
+          {#if councilResult.recommended_strategy.actions?.length > 0}
             <div class="table-container">
               <table class="table">
                 <thead>
                   <tr>
                     <th>Action</th>
-                    <th>Target ID</th>
-                    <th style="text-align: right;">Amount</th>
-                    <th style="text-align: right;">Cost</th>
-                    <th>Fiduciary Rationale</th>
+                    <th>Target</th>
+                    <th class="text-right">Amount</th>
+                    <th class="text-right">Cost</th>
+                    <th>Rationale</th>
                   </tr>
                 </thead>
                 <tbody>
                   {#each councilResult.recommended_strategy.actions as act}
                     <tr>
-                      <td>
-                        <span class="badge badge-pass" style="text-transform: uppercase; font-size: 0.6875rem;">
-                          {act.action_type}
-                        </span>
-                      </td>
-                      <td style="font-family: monospace; font-size: 0.8125rem;">
-                        {act.asset_id || act.liability_id || 'Portfolio Cash'}
-                      </td>
-                      <td style="text-align: right;" class="numeric-cell">
-                        {formatCurrency(act.amount, treasury?.base_currency)}
-                      </td>
-                      <td style="text-align: right;" class="numeric-cell">
-                        {formatCurrency(act.cost, treasury?.base_currency)}
-                      </td>
-                      <td style="font-size: 0.8125rem; color: var(--color-text-muted);">
-                        {act.reason}
-                      </td>
+                      <td class="font-mono font-bold">{act.action_type}</td>
+                      <td class="font-mono muted-cell">{act.asset_id || act.liability_id || 'Portfolio Cash'}</td>
+                      <td class="text-right numeric-cell">{formatCurrency(act.amount, treasury?.base_currency)}</td>
+                      <td class="text-right numeric-cell">{formatCurrency(act.cost, treasury?.base_currency)}</td>
+                      <td class="muted-cell">{act.reason}</td>
                     </tr>
                   {/each}
                 </tbody>
               </table>
             </div>
-          </div>
-        {/if}
-
-        <!-- Search Telemetry & AI Safety -->
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; padding-top: 1rem; border-top: 1px solid var(--color-border); font-size: 0.75rem; color: var(--color-text-muted);">
-          <div>
-            <span>Search Algorithm: <strong style="color: var(--color-text);">{councilResult.search_metrics.algorithm}</strong></span>
-            <span style="margin: 0 0.5rem;">|</span>
-            <span>States Explored: <strong style="color: var(--color-text);">{councilResult.search_metrics.states_explored}</strong></span>
-            <span style="margin: 0 0.5rem;">|</span>
-            <span>Search Depth: <strong style="color: var(--color-text);">{councilResult.search_metrics.depth}</strong></span>
-          </div>
-          <div style="font-style: italic;">
-            Autonomous Governance Gate: Council outputs represent AI decision-support. Manual authorization is enforced.
-          </div>
-        </div>
-      </div>
+          {/if}
+        </section>
+      {/if}
     {/if}
   {/if}
 
@@ -3511,148 +2395,35 @@
       <div class="modal-dialog">
         <div class="modal-header">
           <div>
-            <h3 class="modal-title">{modalAssetMode === 'create' ? 'Add Investment Asset' : `Edit Asset: ${assetForm.name}`}</h3>
-            <p class="modal-subtitle">Define risk, liquidity, and expected financial returns</p>
+            <h3 class="modal-title">{modalAssetMode === 'create' ? 'Add investment asset' : `Edit ${assetForm.name}`}</h3>
+            <p class="modal-subtitle">Define expected return, risk score, and liquidity rating.</p>
           </div>
-          <button type="button" class="modal-close-btn" onclick={() => (showAssetModal = false)} aria-label="Close modal">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-              <line x1="4" y1="4" x2="12" y2="12" stroke-linecap="round" />
-              <line x1="12" y1="4" x2="4" y2="12" stroke-linecap="round" />
-            </svg>
-          </button>
+          <button type="button" class="modal-close-btn" onclick={() => (showAssetModal = false)} aria-label="Close">&times;</button>
         </div>
 
         <form onsubmit={handleSaveAsset} novalidate>
           <div class="modal-body">
             {#if assetModalErrors.length > 0}
               <div class="alert alert-danger" style="margin-bottom: 1rem;">
-                <ul style="padding-left: 1.25rem; margin: 0;">
-                  {#each assetModalErrors as err}
-                    <li>{err}</li>
-                  {/each}
-                </ul>
+                <ul class="err-list">{#each assetModalErrors as err}<li>{err}</li>{/each}</ul>
               </div>
             {/if}
 
             <div class="settings-grid">
-              <div class="form-group">
-                <label for="assetIdInput" class="form-label">Asset Identifier</label>
-                <input
-                  id="assetIdInput"
-                  type="text"
-                  class="form-input"
-                  placeholder="e.g. gov_bond_10y"
-                  bind:value={assetForm.id}
-                  disabled={modalAssetMode === 'edit' || isSavingAsset}
-                />
-              </div>
-
-              <div class="form-group">
-                <label for="assetNameInput" class="form-label">Asset Name</label>
-                <input
-                  id="assetNameInput"
-                  type="text"
-                  class="form-input"
-                  placeholder="e.g. Sovereign Treasury Bond"
-                  bind:value={assetForm.name}
-                  disabled={isSavingAsset}
-                />
-              </div>
-
-              <div class="form-group">
-                <label for="assetTypeInput" class="form-label">Asset Class / Type</label>
-                <select
-                  id="assetTypeInput"
-                  class="form-input"
-                  bind:value={assetForm.asset_type}
-                  disabled={isSavingAsset}
-                >
-                  {#each CANONICAL_ASSET_TYPES as opt}
-                    <option value={opt.value}>{opt.label}</option>
-                  {/each}
-                </select>
-              </div>
-
-              <div class="form-group">
-                <label for="assetReturnInput" class="form-label">Expected Annual Return</label>
-                <input
-                  id="assetReturnInput"
-                  type="number"
-                  step="0.005"
-                  class="form-input"
-                  placeholder="e.g. 0.08"
-                  bind:value={assetForm.expected_return}
-                  disabled={isSavingAsset}
-                />
-              </div>
-
-              <div class="form-group">
-                <label for="assetRiskInput" class="form-label">Risk Score (0.00 to 1.00)</label>
-                <input
-                  id="assetRiskInput"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="1"
-                  class="form-input"
-                  placeholder="e.g. 0.05"
-                  bind:value={assetForm.risk}
-                  disabled={isSavingAsset}
-                />
-              </div>
-
-              <div class="form-group">
-                <label for="assetLiqInput" class="form-label">Liquidity Score (0.00 to 1.00)</label>
-                <input
-                  id="assetLiqInput"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="1"
-                  class="form-input"
-                  placeholder="e.g. 0.85"
-                  bind:value={assetForm.liquidity}
-                  disabled={isSavingAsset}
-                />
-              </div>
-
-              <div class="form-group">
-                <label for="assetCostInput" class="form-label">Transaction / Execution Cost</label>
-                <input
-                  id="assetCostInput"
-                  type="number"
-                  step="0.001"
-                  min="0"
-                  class="form-input"
-                  placeholder="e.g. 0.001"
-                  bind:value={assetForm.cost}
-                  disabled={isSavingAsset}
-                />
-              </div>
-
-              <div class="form-group">
-                <label for="assetVolInput" class="form-label">Annualized Volatility</label>
-                <input
-                  id="assetVolInput"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  class="form-input"
-                  placeholder="e.g. 0.04"
-                  bind:value={assetForm.volatility}
-                  disabled={isSavingAsset}
-                />
-              </div>
+              <div class="form-group"><label for="assetIdInput" class="form-label">Identifier</label><input id="assetIdInput" type="text" class="form-input font-mono" bind:value={assetForm.id} disabled={modalAssetMode === 'edit' || isSavingAsset} /></div>
+              <div class="form-group"><label for="assetNameInput" class="form-label">Name</label><input id="assetNameInput" type="text" class="form-input" bind:value={assetForm.name} disabled={isSavingAsset} /></div>
+              <div class="form-group"><label for="assetTypeInput" class="form-label">Class</label><select id="assetTypeInput" class="form-input" bind:value={assetForm.asset_type} disabled={isSavingAsset}>{#each CANONICAL_ASSET_TYPES as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+              <div class="form-group"><label for="assetReturnInput" class="form-label">Expected return</label><input id="assetReturnInput" type="number" step="0.005" class="form-input font-mono" bind:value={assetForm.expected_return} disabled={isSavingAsset} /></div>
+              <div class="form-group"><label for="assetRiskInput" class="form-label">Risk (0–1)</label><input id="assetRiskInput" type="number" step="0.01" min="0" max="1" class="form-input font-mono" bind:value={assetForm.risk} disabled={isSavingAsset} /></div>
+              <div class="form-group"><label for="assetLiqInput" class="form-label">Liquidity (0–1)</label><input id="assetLiqInput" type="number" step="0.01" min="0" max="1" class="form-input font-mono" bind:value={assetForm.liquidity} disabled={isSavingAsset} /></div>
+              <div class="form-group"><label for="assetCostInput" class="form-label">Transaction cost</label><input id="assetCostInput" type="number" step="0.001" min="0" class="form-input font-mono" bind:value={assetForm.cost} disabled={isSavingAsset} /></div>
+              <div class="form-group"><label for="assetVolInput" class="form-label">Volatility</label><input id="assetVolInput" type="number" step="0.01" min="0" class="form-input font-mono" bind:value={assetForm.volatility} disabled={isSavingAsset} /></div>
             </div>
           </div>
 
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" onclick={() => (showAssetModal = false)} disabled={isSavingAsset}>
-              Cancel
-            </button>
-            <button type="submit" class="btn btn-primary" disabled={isSavingAsset}>
-              {isSavingAsset ? 'Saving to Ledger...' : (modalAssetMode === 'create' ? 'Create Asset' : 'Save Changes')}
-            </button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick={() => (showAssetModal = false)} disabled={isSavingAsset}>Cancel</button>
+            <button type="submit" class="btn btn-primary btn-sm" disabled={isSavingAsset}>{isSavingAsset ? 'Saving...' : 'Save asset'}</button>
           </div>
         </form>
       </div>
@@ -3672,124 +2443,38 @@
       <div class="modal-dialog">
         <div class="modal-header">
           <div>
-            <h3 class="modal-title">{modalLiabilityMode === 'create' ? 'Add Debt Obligation' : `Edit Liability: ${liabilityForm.name}`}</h3>
-            <p class="modal-subtitle">Configure debt facility, principal, interest rate, and mandatory reserves</p>
+            <h3 class="modal-title">{modalLiabilityMode === 'create' ? 'Add debt obligation' : `Edit ${liabilityForm.name}`}</h3>
+            <p class="modal-subtitle">Set facility principal, interest rate, maturity, and mandatory reserve flag.</p>
           </div>
-          <button type="button" class="modal-close-btn" onclick={() => (showLiabilityModal = false)} aria-label="Close modal">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-              <line x1="4" y1="4" x2="12" y2="12" stroke-linecap="round" />
-              <line x1="12" y1="4" x2="4" y2="12" stroke-linecap="round" />
-            </svg>
-          </button>
+          <button type="button" class="modal-close-btn" onclick={() => (showLiabilityModal = false)} aria-label="Close">&times;</button>
         </div>
 
         <form onsubmit={handleSaveLiability} novalidate>
           <div class="modal-body">
             {#if liabilityModalErrors.length > 0}
               <div class="alert alert-danger" style="margin-bottom: 1rem;">
-                <ul style="padding-left: 1.25rem; margin: 0;">
-                  {#each liabilityModalErrors as err}
-                    <li>{err}</li>
-                  {/each}
-                </ul>
+                <ul class="err-list">{#each liabilityModalErrors as err}<li>{err}</li>{/each}</ul>
               </div>
             {/if}
 
             <div class="settings-grid">
-              <div class="form-group">
-                <label for="liabIdInput" class="form-label">Liability Identifier</label>
-                <input
-                  id="liabIdInput"
-                  type="text"
-                  class="form-input"
-                  placeholder="e.g. credit_facility_1"
-                  bind:value={liabilityForm.id}
-                  disabled={modalLiabilityMode === 'edit' || isSavingLiability}
-                />
-              </div>
-
-              <div class="form-group">
-                <label for="liabNameInput" class="form-label">Facility / Liability Name</label>
-                <input
-                  id="liabNameInput"
-                  type="text"
-                  class="form-input"
-                  placeholder="e.g. Senior Revolving Facility"
-                  bind:value={liabilityForm.name}
-                  disabled={isSavingLiability}
-                />
-              </div>
-
-              <div class="form-group">
-                <label for="liabPrincipalInput" class="form-label">Principal Amount ({treasury.base_currency})</label>
-                <input
-                  id="liabPrincipalInput"
-                  type="number"
-                  step="any"
-                  min="0"
-                  class="form-input"
-                  bind:value={liabilityForm.principal}
-                  disabled={isSavingLiability}
-                />
-              </div>
-
-              <div class="form-group">
-                <label for="liabRateInput" class="form-label">Interest Rate (e.g. 0.065 = 6.5%)</label>
-                <input
-                  id="liabRateInput"
-                  type="number"
-                  step="0.005"
-                  min="0"
-                  class="form-input"
-                  bind:value={liabilityForm.interest_rate}
-                  disabled={isSavingLiability}
-                />
-              </div>
-
-              <div class="form-group">
-                <label for="liabMaturityInput" class="form-label">Maturity Term (Months)</label>
-                <input
-                  id="liabMaturityInput"
-                  type="number"
-                  min="1"
-                  class="form-input"
-                  bind:value={liabilityForm.maturity_months}
-                  disabled={isSavingLiability}
-                />
-              </div>
-
-              <div class="form-group">
-                <label for="liabPriorityInput" class="form-label">Settlement Priority (1 = Highest)</label>
-                <input
-                  id="liabPriorityInput"
-                  type="number"
-                  min="1"
-                  class="form-input"
-                  bind:value={liabilityForm.priority}
-                  disabled={isSavingLiability}
-                />
-              </div>
+              <div class="form-group"><label for="liabIdInput" class="form-label">Identifier</label><input id="liabIdInput" type="text" class="form-input font-mono" bind:value={liabilityForm.id} disabled={modalLiabilityMode === 'edit' || isSavingLiability} /></div>
+              <div class="form-group"><label for="liabNameInput" class="form-label">Facility name</label><input id="liabNameInput" type="text" class="form-input" bind:value={liabilityForm.name} disabled={isSavingLiability} /></div>
+              <div class="form-group"><label for="liabPrincipalInput" class="form-label">Principal ({treasury.base_currency})</label><input id="liabPrincipalInput" type="number" step="any" min="0" class="form-input font-mono" bind:value={liabilityForm.principal} disabled={isSavingLiability} /></div>
+              <div class="form-group"><label for="liabRateInput" class="form-label">Interest rate</label><input id="liabRateInput" type="number" step="0.005" min="0" class="form-input font-mono" bind:value={liabilityForm.interest_rate} disabled={isSavingLiability} /></div>
+              <div class="form-group"><label for="liabMaturityInput" class="form-label">Maturity (months)</label><input id="liabMaturityInput" type="number" min="1" class="form-input font-mono" bind:value={liabilityForm.maturity_months} disabled={isSavingLiability} /></div>
+              <div class="form-group"><label for="liabPriorityInput" class="form-label">Priority</label><input id="liabPriorityInput" type="number" min="1" class="form-input font-mono" bind:value={liabilityForm.priority} disabled={isSavingLiability} /></div>
             </div>
 
-            <div class="checkbox-group" style="margin-top: 1rem;">
-              <label class="checkbox-label">
-                <input
-                  type="checkbox"
-                  bind:checked={liabilityForm.is_mandatory_reserve}
-                  disabled={isSavingLiability}
-                />
-                <span>Mandatory debt service reserve (requires cash liquidity provisioning)</span>
-              </label>
-            </div>
+            <label class="checkbox-label" style="margin-top: 0.75rem;">
+              <input type="checkbox" bind:checked={liabilityForm.is_mandatory_reserve} disabled={isSavingLiability} />
+              <span>Mandatory debt service reserve</span>
+            </label>
           </div>
 
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" onclick={() => (showLiabilityModal = false)} disabled={isSavingLiability}>
-              Cancel
-            </button>
-            <button type="submit" class="btn btn-primary" disabled={isSavingLiability}>
-              {isSavingLiability ? 'Saving to Ledger...' : (modalLiabilityMode === 'create' ? 'Create Liability' : 'Save Changes')}
-            </button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick={() => (showLiabilityModal = false)} disabled={isSavingLiability}>Cancel</button>
+            <button type="submit" class="btn btn-primary btn-sm" disabled={isSavingLiability}>{isSavingLiability ? 'Saving...' : 'Save liability'}</button>
           </div>
         </form>
       </div>
@@ -3806,36 +2491,22 @@
       tabindex="-1"
       aria-modal="true"
     >
-      <div class="modal-dialog" style="max-width: 480px;">
+      <div class="modal-dialog" style="max-width: 460px;">
         <div class="modal-header">
           <div>
-            <h3 class="modal-title">Confirm Permanent Removal</h3>
-            <p class="modal-subtitle">Removing {deleteTargetType} from corporate treasury database</p>
+            <h3 class="modal-title">Remove {deleteTargetType}</h3>
+            <p class="modal-subtitle">Permanent deletion from PostgreSQL ledger</p>
           </div>
-          <button type="button" class="modal-close-btn" onclick={() => (showDeleteModal = false)} aria-label="Close modal">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-              <line x1="4" y1="4" x2="12" y2="12" stroke-linecap="round" />
-              <line x1="12" y1="4" x2="4" y2="12" stroke-linecap="round" />
-            </svg>
-          </button>
+          <button type="button" class="modal-close-btn" onclick={() => (showDeleteModal = false)} aria-label="Close">&times;</button>
         </div>
 
         <div class="modal-body">
-          <p style="font-size: 0.9375rem; color: var(--color-text); line-height: 1.5;">
-            Are you sure you want to remove <strong>{deleteTargetName}</strong> (<code>{deleteTargetId}</code>) from this portfolio?
-          </p>
-          <p style="font-size: 0.8125rem; color: var(--color-text-muted); margin-top: 0.75rem;">
-            This will permanently delete the record from PostgreSQL and update all future capital allocation runs.
-          </p>
+          <p>Remove <strong>{deleteTargetName}</strong> (<code class="font-mono">{deleteTargetId}</code>) from this treasury?</p>
         </div>
 
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" onclick={() => (showDeleteModal = false)} disabled={isDeleting}>
-            Cancel
-          </button>
-          <button type="button" class="btn btn-danger" onclick={executeDelete} disabled={isDeleting}>
-            {isDeleting ? 'Deleting...' : 'Confirm Delete'}
-          </button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick={() => (showDeleteModal = false)} disabled={isDeleting}>Cancel</button>
+          <button type="button" class="btn btn-danger btn-sm" onclick={executeDelete} disabled={isDeleting}>{isDeleting ? 'Deleting...' : 'Delete'}</button>
         </div>
       </div>
     </div>
@@ -3855,26 +2526,17 @@
         <div class="modal-header">
           <div>
             <h3 class="modal-title">Edit Corporate Treasury</h3>
-            <p class="modal-subtitle">Modify portfolio metadata and governance parameters</p>
+            <p class="modal-subtitle">Update portfolio capital base and policy parameters.</p>
           </div>
-          <button type="button" class="modal-close-btn" onclick={() => handleCloseEditTreasury()} aria-label="Close modal">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-              <line x1="4" y1="4" x2="12" y2="12" stroke-linecap="round" />
-              <line x1="12" y1="4" x2="4" y2="12" stroke-linecap="round" />
-            </svg>
-          </button>
+          <button type="button" class="modal-close-btn" onclick={() => handleCloseEditTreasury()} aria-label="Close">&times;</button>
         </div>
 
         {#if showUnsavedPrompt}
-          <div class="alert alert-warning" style="margin: 1rem 1.5rem 0 1.5rem; display: flex; justify-content: space-between; align-items: center;">
-            <span>You have unsaved changes. Discard them?</span>
-            <div style="display: flex; gap: 0.5rem;">
-              <button type="button" class="btn btn-secondary btn-sm" onclick={() => (showUnsavedPrompt = false)}>
-                Keep Editing
-              </button>
-              <button type="button" class="btn btn-danger btn-sm" onclick={() => handleCloseEditTreasury(true)}>
-                Discard
-              </button>
+          <div class="alert alert-warning row-between" style="margin: 1rem 1.375rem 0;">
+            <span>Discard unsaved changes?</span>
+            <div class="btn-row">
+              <button type="button" class="btn btn-secondary btn-xs" onclick={() => (showUnsavedPrompt = false)}>Keep editing</button>
+              <button type="button" class="btn btn-danger btn-xs" onclick={() => handleCloseEditTreasury(true)}>Discard</button>
             </div>
           </div>
         {/if}
@@ -3883,111 +2545,45 @@
           <div class="modal-body">
             {#if editTreasuryErrors.length > 0}
               <div class="alert alert-danger" style="margin-bottom: 1rem;">
-                <ul style="padding-left: 1.25rem; margin: 0;">
-                  {#each editTreasuryErrors as err}
-                    <li>{err}</li>
-                  {/each}
-                </ul>
+                <ul class="err-list">{#each editTreasuryErrors as err}<li>{err}</li>{/each}</ul>
               </div>
             {/if}
 
-            <div class="form-group" style="margin-bottom: 1rem;">
-              <div style="display: flex; justify-content: space-between; align-items: baseline;">
-                <label for="edit-treasury-name" class="form-label">Treasury Name *</label>
-                <span style="font-size: 0.75rem; color: var(--color-text-muted);">{editTreasuryForm.name.length}/255</span>
-              </div>
-              <input
-                id="edit-treasury-name"
-                type="text"
-                class="form-input"
-                bind:value={editTreasuryForm.name}
-                maxlength="255"
-                placeholder="e.g. Apex Global Liquid Treasury"
-                required
-              />
+            <div class="form-group">
+              <label for="edit-treasury-name" class="form-label">Treasury name</label>
+              <input id="edit-treasury-name" type="text" class="form-input" bind:value={editTreasuryForm.name} maxlength="255" required />
             </div>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+            <div class="settings-grid">
               <div class="form-group">
-                <label for="edit-treasury-currency" class="form-label">Base Currency *</label>
-                <select
-                  id="edit-treasury-currency"
-                  class="form-select"
-                  bind:value={editTreasuryForm.base_currency}
-                >
-                  <option value="INR">INR - Indian Rupee</option>
-                  <option value="USD">USD - US Dollar</option>
-                  <option value="EUR">EUR - Euro</option>
-                  <option value="GBP">GBP - British Pound</option>
-                  <option value="SGD">SGD - Singapore Dollar</option>
-                  <option value="JPY">JPY - Japanese Yen</option>
+                <label for="edit-treasury-currency" class="form-label">Currency</label>
+                <select id="edit-treasury-currency" class="form-select" bind:value={editTreasuryForm.base_currency}>
+                  <option value="INR">INR</option>
+                  <option value="USD">USD</option>
+                  <option value="EUR">EUR</option>
+                  <option value="GBP">GBP</option>
+                  <option value="SGD">SGD</option>
+                  <option value="JPY">JPY</option>
                 </select>
               </div>
-
               <div class="form-group">
-                <label for="edit-treasury-capital" class="form-label">Total Capital Base *</label>
-                <input
-                  id="edit-treasury-capital"
-                  type="number"
-                  step="any"
-                  min="1"
-                  class="form-input"
-                  bind:value={editTreasuryForm.total_capital}
-                  placeholder="e.g. 100000000"
-                  required
-                />
+                <label for="edit-treasury-capital" class="form-label">Total capital</label>
+                <input id="edit-treasury-capital" type="number" step="any" min="1" class="form-input font-mono" bind:value={editTreasuryForm.total_capital} required />
               </div>
-            </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-              <div class="form-group">
-                <label for="edit-treasury-risk" class="form-label">Risk Tolerance (0.00 - 1.00) *</label>
-                <input
-                  id="edit-treasury-risk"
-                  type="number"
-                  step="0.01"
-                  min="0.00"
-                  max="1.00"
-                  class="form-input"
-                  bind:value={editTreasuryForm.risk_tolerance}
-                  placeholder="0.50"
-                  required
-                />
+              <div class="form-group" style="margin-bottom: 0;">
+                <label for="edit-treasury-risk" class="form-label">Risk tolerance (0–1)</label>
+                <input id="edit-treasury-risk" type="number" step="0.01" min="0" max="1" class="form-input font-mono" bind:value={editTreasuryForm.risk_tolerance} required />
               </div>
-
-              <div class="form-group">
-                <label for="edit-treasury-liquidity" class="form-label">Min Liquidity Floor (0.00 - 1.00) *</label>
-                <input
-                  id="edit-treasury-liquidity"
-                  type="number"
-                  step="0.01"
-                  min="0.00"
-                  max="1.00"
-                  class="form-input"
-                  bind:value={editTreasuryForm.min_liquidity_ratio}
-                  placeholder="0.20"
-                  required
-                />
+              <div class="form-group" style="margin-bottom: 0;">
+                <label for="edit-treasury-liquidity" class="form-label">Min liquidity (0–1)</label>
+                <input id="edit-treasury-liquidity" type="number" step="0.01" min="0" max="1" class="form-input font-mono" bind:value={editTreasuryForm.min_liquidity_ratio} required />
               </div>
             </div>
           </div>
 
           <div class="modal-footer">
-            <button
-              type="button"
-              class="btn btn-secondary"
-              onclick={() => handleCloseEditTreasury()}
-              disabled={isSavingTreasury}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              class="btn btn-primary"
-              disabled={isSavingTreasury || !isTreasuryFormDirty}
-            >
-              {isSavingTreasury ? 'Saving Changes...' : 'Save Changes'}
-            </button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick={() => handleCloseEditTreasury()} disabled={isSavingTreasury}>Cancel</button>
+            <button type="submit" class="btn btn-primary btn-sm" disabled={isSavingTreasury || !isTreasuryFormDirty}>{isSavingTreasury ? 'Saving...' : 'Save changes'}</button>
           </div>
         </form>
       </div>
@@ -3996,536 +2592,212 @@
 </div>
 
 <style>
-  .page-container {
-    max-width: 1100px;
-    margin: 0 auto;
-    padding: 2rem 1.5rem;
-    width: 100%;
+  .nav-row {
+    margin-bottom: -0.5rem;
   }
 
-  .navigation-bar {
-    margin-bottom: 1.5rem;
+  .back-link {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
   }
 
-  .treasury-card {
-    margin-bottom: 2rem;
+  .back-link:hover {
+    color: var(--color-text);
   }
 
-  .generator-card {
-    margin-bottom: 2rem;
+  .row-between {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
   }
 
-  .strategy-result-card {
-    margin-bottom: 2.5rem;
-    border-left: 4px solid var(--color-primary);
+  .btn-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
   }
 
-  .treasury-header {
+  .stack-gap {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .section-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+  }
+
+  .block-head {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    border-bottom: 1px solid var(--color-border);
-    padding-bottom: 1.25rem;
     gap: 1rem;
     flex-wrap: wrap;
   }
 
-  .treasury-title {
-    font-size: 1.75rem;
-    font-weight: 700;
-    color: var(--color-text);
+  .block-head h2,
+  .block-head h3 {
+    font-size: 1.0625rem;
+    font-weight: 500;
   }
 
-  .treasury-id {
+  .block-sub {
+    margin-top: 0.2rem;
     font-size: 0.8125rem;
-    font-family: monospace;
-    color: var(--color-text-muted);
-    margin-top: 0.25rem;
-  }
-
-  .currency-badge {
-    display: inline-block;
-    padding: 0.25rem 0.6rem;
-    background-color: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    font-size: 0.875rem;
-    font-weight: 700;
-    letter-spacing: 0.05em;
+    color: var(--color-text-secondary);
   }
 
   .settings-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 1rem;
-    margin-bottom: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 0.875rem;
   }
 
-  .checkbox-group {
-    display: flex;
-    align-items: center;
+  .field-hint {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    margin-top: 0.25rem;
   }
 
   .checkbox-label {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.45rem;
     font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--color-text);
     cursor: pointer;
   }
 
-  .editor-section {
-    background-color: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    padding: 1rem;
-  }
-
-  .editor-header {
+  .editor-block {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 1rem;
-    flex-wrap: wrap;
-  }
-
-  .editor-title {
-    font-size: 0.9375rem;
-    font-weight: 600;
-    color: var(--color-text);
-  }
-
-  .editor-subtitle {
-    font-size: 0.8125rem;
-    color: var(--color-text-muted);
-  }
-
-  .editor-table th {
-    padding: 0.5rem 0.625rem;
-    font-size: 0.6875rem;
+    flex-direction: column;
+    gap: 0.35rem;
   }
 
   .editor-table td {
-    padding: 0.375rem 0.5rem;
+    padding: 0.35rem 0.4rem;
   }
 
   .editor-input {
-    padding: 0.25rem 0.5rem;
+    min-height: 32px;
+    padding: 0.2rem 0.45rem;
     font-size: 0.8125rem;
   }
 
-  .explanation-box {
-    background-color: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    padding: 0.875rem 1rem;
+  .compact-select {
+    width: auto;
+    min-height: 32px;
+    padding: 0.2rem 0.5rem;
+    font-size: 0.8125rem;
   }
 
-  .explanation-text {
-    font-size: 0.875rem;
-    color: var(--color-text);
-    line-height: 1.5;
-    margin-top: 0.25rem;
-  }
-
-  .optimization-status-box {
-    background-color: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    padding: 0.75rem 1rem;
-  }
-
-  .strategies-section {
-    margin-top: 2rem;
-  }
-
-  .section-header {
-    margin-bottom: 1.25rem;
-  }
-
-  .section-title {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: var(--color-text);
-  }
-
-  .section-subtitle {
-    font-size: 0.875rem;
-    color: var(--color-text-muted);
-  }
-
-  .algo-badge {
-    display: inline-block;
-    padding: 0.2rem 0.45rem;
-    background-color: var(--color-badge-analyst-bg);
-    color: var(--color-badge-analyst);
-    border: 1px solid var(--color-badge-analyst-bg);
-    border-radius: var(--radius);
-    font-size: 0.75rem;
-    font-weight: 600;
-  }
-
-  .allocations-wrap {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-    max-width: 320px;
-  }
-
-  .numeric-cell {
-    font-variant-numeric: tabular-nums;
-  }
-
-  .empty-card {
-    text-align: center;
-    padding: 3rem 1.5rem;
-  }
-
-  .not-found-card {
-    text-align: center;
-    padding: 3.5rem 1.5rem;
-  }
-
-  .state-title {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: var(--color-text);
-    margin-bottom: 0.5rem;
-  }
-
-  .state-message {
-    font-size: 0.875rem;
-    color: var(--color-text-muted);
-  }
-
-  /* F5 Tab Navigation */
-  .tabs-nav {
-    display: flex;
-    gap: 0.5rem;
-    border-bottom: 2px solid var(--color-border);
-    margin-bottom: 1.5rem;
-  }
-
-  .tab-btn {
-    background: none;
-    border: none;
-    padding: 0.75rem 1.25rem;
-    font-size: 0.9375rem;
-    font-weight: 600;
-    color: var(--color-text-muted);
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -2px;
-    transition: color 0.15s ease, border-color 0.15s ease;
-  }
-
-  .tab-btn:hover {
-    color: var(--color-text);
-  }
-
-  .tab-btn.tab-active {
-    color: var(--color-primary);
-    border-bottom-color: var(--color-primary);
-  }
-
-  /* F5 Portfolio State Context Banner */
-  .portfolio-banner {
+  .chart-container {
     background-color: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-left: 4px solid var(--color-primary);
     border-radius: var(--radius);
     padding: 1rem 1.25rem;
-    margin-bottom: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
   }
 
-  .portfolio-banner-header {
-    display: flex;
-    justify-content: space-between;
+  .bar-row {
+    display: grid;
+    grid-template-columns: minmax(120px, 180px) 1fr auto;
     align-items: center;
-    margin-bottom: 0.35rem;
-    gap: 0.5rem;
-  }
-
-  .portfolio-banner-text {
-    font-size: 0.875rem;
-    color: var(--color-text);
-    line-height: 1.5;
-  }
-
-  .result-card {
-    border-left: 4px solid var(--color-primary);
-  }
-
-  .composite-score-box {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-  }
-
-  .composite-score-value {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--color-primary);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .explanations-list {
-    margin: 0;
-    padding-left: 1.25rem;
-    font-size: 0.875rem;
-    color: var(--color-text);
-    line-height: 1.6;
-  }
-
-  /* F5 Risk Tier Badges */
-  .badge-tier-low {
-    background-color: var(--color-success-bg);
-    color: var(--color-success);
-    border: 1px solid var(--color-success-border);
-  }
-
-  .badge-tier-moderate {
-    background-color: var(--color-badge-analyst-bg);
-    color: var(--color-badge-analyst);
-    border: 1px solid var(--color-badge-analyst-bg);
-  }
-
-  .badge-tier-high,
-  .badge-tier-critical {
-    background-color: var(--color-danger-bg);
-    color: var(--color-danger);
-    border: 1px solid var(--color-danger-border);
-  }
-
-  /* F5 Stress Scenarios Grid */
-  .scenarios-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 1.25rem;
-    margin-top: 1rem;
-  }
-
-  .scenario-card {
-    background-color: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    padding: 1.25rem;
-    display: flex;
-    flex-direction: column;
     gap: 0.875rem;
-    box-shadow: var(--shadow-sm);
+    font-size: 0.875rem;
   }
 
-  .scenario-card-breach {
-    border-color: var(--color-danger-border);
-    border-left: 4px solid var(--color-danger);
+  .bar-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .scenario-card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 0.5rem;
+  .bar-track {
+    height: 8px;
+    background-color: var(--color-bg-secondary);
+    border-radius: 2px;
+    overflow: hidden;
   }
 
-  .scenario-title {
-    font-size: 0.9375rem;
-    font-weight: 700;
-    color: var(--color-text);
+  .bar-fill {
+    height: 100%;
+    background-color: var(--color-border-strong);
   }
 
-  .scenario-desc {
-    font-size: 0.75rem;
-    color: var(--color-text-muted);
-    margin-top: 0.2rem;
+  .bar-fill-highlight {
+    background-color: var(--color-primary);
   }
 
-  .scenario-shocks-box {
-    background-color: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    padding: 0.5rem 0.75rem;
+  .bar-value {
+    font-size: 0.8125rem;
+    color: var(--color-text-secondary);
+    white-space: nowrap;
   }
 
-  .scenario-shock-params {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.75rem;
-    margin-top: 0.25rem;
-    color: var(--color-text);
-    flex-wrap: wrap;
-    gap: 0.35rem;
+  .highlight-row td {
+    background-color: var(--color-bg-secondary);
   }
 
-  .scenario-metrics-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.75rem;
-  }
-
-  .scenario-metric {
+  .allocations-cell {
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
   }
 
-  .scenario-metric-val {
-    font-size: 0.9375rem;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .val-negative {
-    color: var(--color-danger);
-  }
-
-  /* Executive Balance Sheet Summary Row */
-  .balance-sheet-kpis {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 1rem;
-    margin-bottom: 2rem;
-  }
-
-  .kpi-card {
-    background-color: var(--color-surface, #ffffff);
-    border: 1px solid var(--color-border, #e2e8f0);
-    border-radius: var(--radius, 8px);
-    padding: 1.125rem 1.25rem;
-  }
-
-  .kpi-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.35rem;
-  }
-
-  .kpi-category {
-    font-size: 0.6875rem;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    color: var(--color-text-muted, #64748b);
-    text-transform: uppercase;
-  }
-
-  .currency-tag {
-    font-size: 0.6875rem;
-    font-weight: 700;
-    padding: 0.15rem 0.4rem;
-    background-color: var(--color-bg, #f8fafc);
-    border: 1px solid var(--color-border, #e2e8f0);
-    border-radius: 4px;
-    color: var(--color-text-muted, #64748b);
-  }
-
-  .kpi-value {
-    font-size: 1.375rem;
-    font-weight: 700;
-    color: var(--color-text, #0f172a);
-    line-height: 1.2;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .kpi-subtext {
+  .alloc-line {
     font-size: 0.75rem;
-    color: var(--color-text-muted, #64748b);
-    margin-top: 0.35rem;
+    color: var(--color-text-secondary);
   }
 
-  .val-positive {
-    color: #059669;
+  .council-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1rem;
   }
 
-  .status-indicator-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    display: inline-block;
+  .score-line {
+    padding: 0.5rem 0;
+    border-top: 1px solid var(--color-border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
-  .dot-positive {
-    background-color: #059669;
-  }
-
-  .dot-negative {
-    background-color: #e11d48;
-  }
-
-  /* Institutional Modal Styles */
-  .modal-backdrop {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: rgba(15, 23, 42, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    padding: 1.5rem;
-  }
-
-  .modal-dialog {
-    background-color: var(--color-surface, #ffffff);
-    border: 1px solid var(--color-border, #e2e8f0);
-    border-radius: var(--radius, 8px);
-    width: 100%;
-    max-width: 580px;
-    max-height: 90vh;
-    overflow-y: auto;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-  }
-
-  .modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    padding: 1.25rem 1.5rem;
-    border-bottom: 1px solid var(--color-border, #e2e8f0);
-  }
-
-  .modal-title {
-    font-size: 1.125rem;
-    font-weight: 700;
-    color: var(--color-text, #0f172a);
-  }
-
-  .modal-subtitle {
+  .bullet-list,
+  .err-list {
+    margin: 0.25rem 0 0;
+    padding-left: 1.25rem;
     font-size: 0.8125rem;
-    color: var(--color-text-muted, #64748b);
-    margin-top: 0.15rem;
+    line-height: 1.5;
   }
 
-  .modal-close-btn {
-    background: none;
-    border: none;
-    color: var(--color-text-muted, #64748b);
-    cursor: pointer;
-    font-size: 1.25rem;
-    padding: 0.25rem;
-    line-height: 1;
-    border-radius: 4px;
+  .class-cell {
+    color: var(--color-text-secondary);
+    text-transform: capitalize;
   }
 
-  .modal-close-btn:hover {
-    color: var(--color-text, #0f172a);
-    background-color: var(--color-bg, #f8fafc);
+  .pos-val { color: var(--color-success); font-weight: 500; }
+  .neg-val { color: var(--color-danger); font-weight: 500; }
+  .muted-cell { color: var(--color-text-muted); }
+
+  .empty-box {
+    padding: 2.5rem 1rem;
+    text-align: center;
+    color: var(--color-text-muted);
+    border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
   }
 
-  .modal-body {
-    padding: 1.25rem 1.5rem;
-  }
-
-  .modal-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.75rem;
-    padding: 1rem 1.5rem;
-    border-top: 1px solid var(--color-border, #e2e8f0);
-    background-color: var(--color-bg, #f8fafc);
+  @media (max-width: 640px) {
+    .bar-row {
+      grid-template-columns: 1fr;
+      gap: 0.25rem;
+    }
   }
 </style>

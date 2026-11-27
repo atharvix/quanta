@@ -4,25 +4,25 @@ import { browser } from '$app/env';
 export type Theme = 'dark' | 'light' | 'system';
 
 function createThemeStore() {
-  const defaultTheme: Theme = 'dark';
+  const defaultTheme: Theme = 'light';
   const initialTheme: Theme = browser
-    ? ((localStorage.getItem('quanta_theme') as Theme) || 'dark')
+    ? ((localStorage.getItem('quanta_theme') as Theme) || defaultTheme)
     : defaultTheme;
 
   const { subscribe, set } = writable<Theme>(initialTheme);
 
   return {
     subscribe,
-    setTheme: (theme: Theme) => {
+    setTheme: (nextTheme: Theme) => {
       if (browser) {
-        localStorage.setItem('quanta_theme', theme);
-        applyTheme(theme);
+        localStorage.setItem('quanta_theme', nextTheme);
+        applyTheme(nextTheme);
       }
-      set(theme);
+      set(nextTheme);
     },
     toggleTheme: () => {
       if (!browser) return;
-      const current = (localStorage.getItem('quanta_theme') as Theme) || 'dark';
+      const current = (localStorage.getItem('quanta_theme') as Theme) || defaultTheme;
       const next: Theme = current === 'dark' ? 'light' : 'dark';
       localStorage.setItem('quanta_theme', next);
       applyTheme(next);
@@ -30,14 +30,13 @@ function createThemeStore() {
     },
     init: () => {
       if (!browser) return;
-      const saved = (localStorage.getItem('quanta_theme') as Theme) || 'dark';
+      const saved = (localStorage.getItem('quanta_theme') as Theme) || defaultTheme;
       applyTheme(saved);
       set(saved);
 
-      // Listen for system theme changes if set to system
       const mql = window.matchMedia('(prefers-color-scheme: dark)');
       mql.addEventListener('change', () => {
-        const current = (localStorage.getItem('quanta_theme') as Theme) || 'dark';
+        const current = (localStorage.getItem('quanta_theme') as Theme) || defaultTheme;
         if (current === 'system') {
           applyTheme('system');
         }
@@ -46,15 +45,15 @@ function createThemeStore() {
   };
 }
 
-export function applyTheme(theme: Theme) {
+export function applyTheme(nextTheme: Theme) {
   if (!browser) return;
   const root = document.documentElement;
-  let resolved: 'dark' | 'light' = 'dark';
+  let resolved: 'dark' | 'light' = 'light';
 
-  if (theme === 'system') {
+  if (nextTheme === 'system') {
     resolved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   } else {
-    resolved = theme;
+    resolved = nextTheme;
   }
 
   root.setAttribute('data-theme', resolved);
@@ -66,7 +65,7 @@ export function applyTheme(theme: Theme) {
 export const theme = createThemeStore();
 
 export const isDarkMode = derived(theme, ($theme) => {
-  if (!browser) return true;
+  if (!browser) return false;
   if ($theme === 'system') {
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
   }

@@ -85,6 +85,48 @@ func TestTreasuryService_List(t *testing.T) {
 			t.Fatalf("expected ErrInvalidPagination for negative offset, got %v", err)
 		}
 	})
+
+	t.Run("List enforces resource access filtering by caller role and owner", func(t *testing.T) {
+		ownerA := "owner-a"
+		ownerB := "owner-b"
+		allRows := []domain.Treasury{
+			{ID: "t-a", Name: "Owned by A", OwnerID: &ownerA},
+			{ID: "t-b", Name: "Owned by B", OwnerID: &ownerB},
+			{ID: "t-unowned", Name: "Legacy Shared", OwnerID: nil},
+		}
+		s := NewTreasuryService(&MockTreasuryRepository{
+			listFn: func(ctx context.Context, limit, offset int) ([]domain.Treasury, error) {
+				return allRows, nil
+			},
+		})
+
+		analystA := domain.WithUserContext(context.Background(), ownerA, "a@quanta.local", domain.RoleAnalyst)
+		gotA, err := s.List(analystA, 20, 0)
+		if err != nil {
+			t.Fatalf("unexpected error for analyst: %v", err)
+		}
+		if len(gotA) != 2 || gotA[0].ID != "t-a" || gotA[1].ID != "t-unowned" {
+			t.Fatalf("expected analyst A to see own + unassigned treasuries, got %+v", gotA)
+		}
+
+		viewerA := domain.WithUserContext(context.Background(), ownerA, "v@quanta.local", domain.RoleViewer)
+		gotViewer, err := s.List(viewerA, 20, 0)
+		if err != nil {
+			t.Fatalf("unexpected error for viewer: %v", err)
+		}
+		if len(gotViewer) != 1 || gotViewer[0].ID != "t-a" {
+			t.Fatalf("expected viewer A to see only own treasury, got %+v", gotViewer)
+		}
+
+		adminCtx := domain.WithUserContext(context.Background(), "admin-1", "admin@quanta.local", domain.RoleAdmin)
+		gotAdmin, err := s.List(adminCtx, 20, 0)
+		if err != nil {
+			t.Fatalf("unexpected error for admin: %v", err)
+		}
+		if len(gotAdmin) != 3 {
+			t.Fatalf("expected admin to see all 3 treasuries, got %d", len(gotAdmin))
+		}
+	})
 }
 
 func TestTreasuryService_GetByID(t *testing.T) {

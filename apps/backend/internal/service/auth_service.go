@@ -216,12 +216,6 @@ func (s *AuthService) GetCurrentUser(ctx context.Context) (*UserResponse, error)
 		return nil, err
 	}
 
-	return &UserResponse{
-		ID:       user.ID,
-		Email:    user.Email,
-		FullName: user.FullName,
-		Role:     user.Role,
-	}, nil
 	resp := toUserResponse(user)
 	return &resp, nil
 }

@@ -30,23 +30,51 @@ func NewPgxTreasuryRepository(db *database.DB) *PgxTreasuryRepository {
 	return &PgxTreasuryRepository{db: db}
 }
 
-// List retrieves paginated treasury records sorted by creation timestamp descending.
+// List retrieves paginated treasury records visible to the caller's role and identity, sorted newest first.
 func (r *PgxTreasuryRepository) List(ctx context.Context, limit, offset int) ([]domain.Treasury, error) {
 	if r.db == nil || r.db.Pool() == nil {
 		return nil, domain.ErrDatabaseUnavailable
 	}
 
+	callerRole := domain.RoleFromContext(ctx)
+	callerID := domain.UserIDFromContext(ctx)
+
+	var whereClause string
+	args := []any{limit, offset}
+	switch callerRole {
+	case domain.RoleAdmin:
+		whereClause = ""
+	case domain.RoleAnalyst:
+		if callerID != "" {
+			whereClause = "WHERE owner_id::text = $3 OR owner_id IS NULL"
+			args = append(args, callerID)
+		} else {
+			whereClause = "WHERE owner_id IS NULL"
+		}
+	case domain.RoleViewer:
+		if callerID == "" {
+			return []domain.Treasury{}, nil
+		}
+		whereClause = "WHERE owner_id::text = $3"
+		args = append(args, callerID)
+	case "":
+		whereClause = "WHERE owner_id IS NULL"
+	default:
+		return []domain.Treasury{}, nil
+	}
+
 	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	const query = `
+	query := `
 		SELECT id::text, name, base_currency, total_capital, risk_tolerance, min_liquidity_ratio, created_at, updated_at, owner_id::text
 		FROM corporate_treasuries
+		` + whereClause + `
 		ORDER BY created_at DESC
 		LIMIT $1 OFFSET $2;
 	`
 
-	rows, err := r.db.Pool().Query(timeoutCtx, query, limit, offset)
+	rows, err := r.db.Pool().Query(timeoutCtx, query, args...)
 	if err != nil {
 		return nil, err
 	}

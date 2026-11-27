@@ -140,6 +140,15 @@ if ($psqlExe -and $dbUrl) {
     if ($migrationOk) {
         Write-Ok "PostgreSQL migrations 000-005 verified/applied."
     }
+    $seedSql = Join-Path $RepoRoot 'scripts\seed_demo.sql'
+    if (Test-Path $seedSql) {
+        $prevErr = $ErrorActionPreference; $ErrorActionPreference = "Continue"; $seedOut = & $psqlExe -q -v ON_ERROR_STOP=1 -d $dbUrl -f $seedSql 2>&1; $ErrorActionPreference = $prevErr
+        if ($LASTEXITCODE -eq 0) {
+            Write-Ok "Demo role accounts (admin/analyst/viewer) verified."
+        } else {
+            Write-Warn "Demo seed script warning: $seedOut"
+        }
+    }
 } elseif (-not $psqlExe) {
     Write-Warn "psql.exe not found on PATH; skipping manual SQL step (Go backend applies migrations automatically on connect)."
 }
